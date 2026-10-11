@@ -1,0 +1,330 @@
+<UserControl x:Class="ProPS1Studio.App.Views.ConvertView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  Focusable="False">
+        <StackPanel>
+
+            <!-- Header -->
+            <DockPanel Margin="0,0,0,14">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                    <Button Command="{Binding ClearCommand}" Margin="8,0,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74C;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Text="Clear" Margin="7,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding OpenOutputCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE838;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Text="Open output" Margin="7,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="Convert" FontSize="22" FontWeight="Bold" />
+                    <TextBlock Text="Compile a .ps1 script into a standalone Windows executable."
+                               Style="{StaticResource Caption}"
+                               Margin="0,4,0,0" />
+                </StackPanel>
+            </DockPanel>
+
+            <!-- Script card -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Script" Style="{StaticResource SectionHeader}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="Input" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding InputPath, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="8,0"
+                                 ToolTip="Path to the .ps1 script to compile" />
+                        <Button Grid.Column="2" Command="{Binding BrowseInputCommand}" Content="Browse..." />
+
+                        <TextBlock Grid.Row="1" Text="Output" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Row="1" Grid.Column="1"
+                                 Text="{Binding OutputPath, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="8,4,8,0"
+                                 ToolTip="Destination .exe path" />
+                        <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" Margin="0,4,0,0">
+                            <Button Command="{Binding DeriveOutputCommand}" Content="Same folder" Margin="0,0,8,0" />
+                            <Button Command="{Binding BrowseOutputCommand}" Content="Browse..." />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Options card -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Options" Style="{StaticResource SectionHeader}" />
+                    <UniformGrid Columns="2">
+                        <CheckBox Content="Run as administrator (requireAdministrator)"
+                                  IsChecked="{Binding RequireAdministrator}"
+                                  Margin="0,2,12,6"
+                                  ToolTip="Embeds a UAC manifest so the exe always prompts for elevation" />
+                        <CheckBox Content="No console window (Windows GUI app)"
+                                  IsChecked="{Binding NoConsole}"
+                                  Margin="0,2,12,6"
+                                  ToolTip="Builds a windowed exe with no console" />
+                        <CheckBox Content="Compress with UPX"
+                                  IsChecked="{Binding CompressWithUpx}"
+                                  Margin="0,2,12,6"
+                                  ToolTip="Skipped automatically for .NET assemblies (UPX cannot pack them)" />
+                        <CheckBox Content="Scan for secrets before compiling"
+                                  IsChecked="{Binding EnableSecretScan}"
+                                  Margin="0,2,12,6"
+                                  ToolTip="Flags tokens/keys/passwords in the script and shows masked findings" />
+                        <CheckBox Content="Encrypt script source (AES-256)"
+                                  IsChecked="{Binding EncryptScript}"
+                                  Margin="0,2,12,6"
+                                  ToolTip="Bakes the script into the exe as ciphertext so it cannot be read by opening the file. The key stays inside the executable: hides the source from casual viewing, not full copy protection" />
+                        <CheckBox Content="Protect output (encrypted stub + anti-debug)"
+                                  IsChecked="{Binding ProtectOutput}"
+                                  Margin="0,2,12,6"
+                                  ToolTip="Wraps the finished exe in a per-build encrypted stub: the real payload only exists decrypted in memory at launch, and the exe exits immediately under a debugger or common reverse-engineering tools. Obfuscation, not DRM - a determined analyst can still recover it" />
+                        <CheckBox Content="Overwrite existing output"
+                                  IsChecked="{Binding OverwriteOutput}"
+                                  Margin="0,2,12,6" />
+                        <CheckBox Content="Open output folder when done"
+                                  IsChecked="{Binding OpenFolderAfter}"
+                                  Margin="0,2,12,6" />
+                        <CheckBox Content="Sign with Authenticode after compile"
+                                  IsChecked="{Binding SignAfterConversion}"
+                                  IsEnabled="{Binding HasSignConfig}"
+                                  Margin="0,2,12,6"
+                                  ToolTip="Configure a certificate on the Settings page first" />
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Metadata card -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Version info &amp; icon (optional)" Style="{StaticResource SectionHeader}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="Title" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Column="1" Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,12,6" />
+                        <TextBlock Grid.Column="2" Text="Company" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Column="3" Text="{Binding Company, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,6" />
+
+                        <TextBlock Grid.Row="1" Text="Product" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Product, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,12,6" />
+                        <TextBlock Grid.Row="1" Grid.Column="2" Text="Version" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding FileVersion, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,6"
+                                 ToolTip="e.g. 1.2.3.0" />
+
+                        <TextBlock Grid.Row="2" Text="Copyright" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Copyright, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,12,6" />
+                        <TextBlock Grid.Row="2" Grid.Column="2" Text="Icon" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <StackPanel Grid.Row="2" Grid.Column="3" Orientation="Horizontal" Margin="8,0,0,6">
+                            <TextBox Text="{Binding IconPath, UpdateSourceTrigger=PropertyChanged}" Width="160" />
+                            <Button Command="{Binding BrowseIconCommand}" Content="..." Margin="6,0,0,0" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="3" Text="Description" VerticalAlignment="Top" Margin="0,4,0,0" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3"
+                                 Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="8,4,0,0"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 Height="52"
+                                 VerticalContentAlignment="Top" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Run row -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Style="{StaticResource ButtonAccent}"
+                                Command="{Binding ConvertCommand}"
+                                Content="Convert"
+                                FontSize="14"
+                                Padding="22,9"
+                                MinWidth="140" />
+                        <Button Command="{Binding CancelCommand}" Content="Cancel" Margin="10,0,0,0" Padding="16,8" />
+                        <TextBlock Text="{Binding ProgressText}"
+                                   VerticalAlignment="Center"
+                                   Margin="16,0,0,0"
+                                   Foreground="{StaticResource TextDimBrush}" />
+                    </StackPanel>
+                    <ProgressBar IsIndeterminate="True"
+                                 Height="4"
+                                 Margin="0,12,0,0"
+                                 BorderThickness="0">
+                        <ProgressBar.Style>
+                            <Style TargetType="{x:Type ProgressBar}"
+                                   BasedOn="{StaticResource {x:Type ProgressBar}}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ProgressBar.Style>
+                    </ProgressBar>
+                </StackPanel>
+            </Border>
+
+            <!-- Result -->
+            <Border CornerRadius="8"
+                    Padding="16"
+                    BorderThickness="1"
+                    Margin="0,0,0,4">
+                <Border.Style>
+                    <Style TargetType="{x:Type Border}">
+                        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+                        <Setter Property="BorderBrush" Value="{StaticResource StrokeSoftBrush}" />
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasResult}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Setter Property="BorderBrush" Value="{StaticResource SuccessBrush}" />
+                            </DataTrigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding HasResult}" Value="True" />
+                                    <Condition Binding="{Binding LastSuccess}" Value="False" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="&#xE73E;"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="17"
+                                   VerticalAlignment="Top"
+                                   Foreground="{StaticResource SuccessBrush}">
+                            <TextBlock.Style>
+                                <Style TargetType="{x:Type TextBlock}">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding LastSuccess}" Value="False">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Grid.Column="0" Text="&#xE711;"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="17"
+                                   VerticalAlignment="Top"
+                                   Foreground="{StaticResource DangerBrush}">
+                            <TextBlock.Style>
+                                <Style TargetType="{x:Type TextBlock}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding LastSuccess}" Value="False">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                            <TextBlock Text="{Binding ResultSummary}" FontSize="14.5" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding ResultDetails}"
+                                       Style="{StaticResource Caption}"
+                                       Margin="0,5,0,0" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Warnings -->
+                    <ItemsControl ItemsSource="{Binding Warnings}" Margin="0,10,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="0,2">
+                                    <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource WarnBrush}" Margin="0,0,8,0" />
+                                    <TextBlock Text="{Binding}" Foreground="{StaticResource WarnBrush}" FontSize="12.5" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Secret findings -->
+                    <ItemsControl ItemsSource="{Binding Findings}" Margin="0,6,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="0,2">
+                                    <TextBlock Text="&#xE72E;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource DangerBrush}" Margin="0,0,8,0" />
+                                    <TextBlock Text="{Binding}" Foreground="{StaticResource DangerBrush}" FontSize="12.5" FontFamily="Consolas" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Compiler output -->
+                    <Border Margin="0,10,0,0"
+                            Background="{StaticResource MonoBgBrush}"
+                            BorderBrush="{StaticResource StrokeSoftBrush}"
+                            BorderThickness="1"
+                            CornerRadius="5"
+                            Padding="10,6">
+                        <Border.Style>
+                            <Style TargetType="{x:Type Border}">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CompilerOutputText}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel>
+                            <TextBlock Text="COMPILER OUTPUT" Style="{StaticResource Caption}" FontSize="10.5" Margin="0,0,0,6" />
+                            <TextBox Text="{Binding CompilerOutputText, Mode=OneWay}"
+                                     IsReadOnly="True"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     FontFamily="Consolas"
+                                     FontSize="12"
+                                     Padding="0"
+                                     MaxHeight="220"
+                                     VerticalScrollBarVisibility="Auto"
+                                     VerticalContentAlignment="Top" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

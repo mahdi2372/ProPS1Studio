@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>ProPS1Studio.Core</RootNamespace>
+    <AssemblyName>ProPS1Studio.Core</AssemblyName>
+    <Description>Core conversion, setup, security and diagnostics engine for ProPS1 Studio.</Description>
+  </PropertyGroup>
+
+</Project>

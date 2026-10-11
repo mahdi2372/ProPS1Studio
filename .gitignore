@@ -1,0 +1,15 @@
+# Build results
+bin/
+obj/
+publish/
+TestResults/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs / local state
+*.log

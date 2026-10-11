@@ -1,0 +1,235 @@
+<Window x:Class="ProPS1Studio.App.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:mvvm="clr-namespace:ProPS1Studio.App.Mvvm"
+        Title="ProPS1 Studio - Sign in"
+        Height="720"
+        Width="470"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgBrush}"
+        Foreground="{StaticResource TextBrush}"
+        FontFamily="Segoe UI"
+        FontSize="13"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display">
+
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36"
+                            CornerRadius="0"
+                            GlassFrameThickness="0"
+                            ResizeBorderThickness="6"
+                            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Border Background="{StaticResource BgBrush}"
+            BorderBrush="{StaticResource StrokeSoftBrush}"
+            BorderThickness="1"
+            CornerRadius="8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="36" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- ============ Title bar (custom, chrome-enabled) ============ -->
+            <Grid Background="Transparent">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal"
+                            Margin="14,0,0,0"
+                            VerticalAlignment="Center">
+                    <Ellipse Width="8"
+                             Height="8"
+                             Fill="{StaticResource AccentGradientBrush}"
+                             Effect="{StaticResource LogoGlow}"
+                             VerticalAlignment="Center" />
+                    <TextBlock Text="ProPS1 Studio"
+                               Margin="9,0,0,0"
+                               FontSize="12.5"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}" />
+                </StackPanel>
+                <Button x:Name="CloseButton"
+                        Grid.Column="1"
+                        Style="{StaticResource CaptionClose}"
+                        Width="44"
+                        Height="36"
+                        FontFamily="Segoe MDL2 Assets"
+                        FontSize="11"
+                        Content="&#xE8BB;"
+                        ToolTip="Close"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                        Click="OnCloseClick" />
+            </Grid>
+
+            <!-- Accent hairline under title bar -->
+            <Border Grid.Row="0"
+                    Height="1"
+                    VerticalAlignment="Bottom"
+                    Background="{StaticResource HairlineBrush}" />
+
+            <!-- ============ Content ============ -->
+            <ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Focusable="False">
+                <StackPanel Margin="34,24,34,26">
+
+                    <!-- Logo -->
+                    <Border Width="56"
+                            Height="56"
+                            CornerRadius="16"
+                            HorizontalAlignment="Center"
+                            Background="{StaticResource AccentGradientBrush}"
+                            Effect="{StaticResource LogoGlow}">
+                        <TextBlock Text="PS"
+                                   FontSize="21"
+                                   FontWeight="Bold"
+                                   Foreground="White"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+
+                    <TextBlock Text="{Binding HeadingText}"
+                               FontSize="19"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Margin="0,16,0,0" />
+                    <TextBlock Text="{Binding SubtitleText}"
+                               Style="{StaticResource Caption}"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Margin="6,6,0,0" />
+
+                    <!-- Mode selector -->
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Center"
+                                Margin="0,18,0,0">
+                        <RadioButton GroupName="AuthMode"
+                                     Content="Sign in"
+                                     IsChecked="{Binding IsLoginMode, Mode=TwoWay}"
+                                     Margin="0,0,14,0" />
+                        <RadioButton GroupName="AuthMode"
+                                     Content="Register"
+                                     IsChecked="{Binding IsRegisterMode, Mode=TwoWay}"
+                                     Margin="0,0,14,0" />
+                        <RadioButton GroupName="AuthMode"
+                                     Content="License"
+                                     IsChecked="{Binding IsLicenseMode, Mode=TwoWay}" />
+                    </StackPanel>
+
+                    <Border Height="1"
+                            Background="{StaticResource HairlineBrush}"
+                            Margin="0,16,0,0" />
+
+                    <!-- Username -->
+                    <TextBlock Text="Username"
+                               FontSize="11.5"
+                               Foreground="{StaticResource TextDimBrush}"
+                               Margin="0,16,0,5"
+                               Visibility="{Binding ShowUsername, Converter={StaticResource BoolToVis}}" />
+                    <TextBox x:Name="UsernameInput"
+                             Height="36"
+                             Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                             Visibility="{Binding ShowUsername, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- Password -->
+                    <TextBlock Text="Password"
+                               FontSize="11.5"
+                               Foreground="{StaticResource TextDimBrush}"
+                               Margin="0,14,0,5"
+                               Visibility="{Binding ShowPassword, Converter={StaticResource BoolToVis}}" />
+                    <PasswordBox x:Name="PasswordInput"
+                                 Height="36"
+                                 mvvm:PasswordBoxHelper.BindPassword="True"
+                                 mvvm:PasswordBoxHelper.BoundPassword="{Binding Password, Mode=TwoWay}"
+                                 Visibility="{Binding ShowPassword, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- Confirm password -->
+                    <TextBlock Text="Confirm password"
+                               FontSize="11.5"
+                               Foreground="{StaticResource TextDimBrush}"
+                               Margin="0,14,0,5"
+                               Visibility="{Binding ShowConfirmPassword, Converter={StaticResource BoolToVis}}" />
+                    <PasswordBox Height="36"
+                                 mvvm:PasswordBoxHelper.BindPassword="True"
+                                 mvvm:PasswordBoxHelper.BoundPassword="{Binding ConfirmPassword, Mode=TwoWay}"
+                                 Visibility="{Binding ShowConfirmPassword, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- License key -->
+                    <TextBlock Text="License key"
+                               FontSize="11.5"
+                               Foreground="{StaticResource TextDimBrush}"
+                               Margin="0,14,0,5"
+                               Visibility="{Binding ShowLicenseKey, Converter={StaticResource BoolToVis}}" />
+                    <TextBox Height="36"
+                             Text="{Binding LicenseKey, UpdateSourceTrigger=PropertyChanged}"
+                             Visibility="{Binding ShowLicenseKey, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- Remember username -->
+                    <CheckBox Content="Remember username"
+                              IsChecked="{Binding RememberUsername, Mode=TwoWay}"
+                              Margin="0,14,0,0"
+                              Visibility="{Binding ShowRememberUsername, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- Error -->
+                    <Border Background="{StaticResource DangerBgBrush}"
+                            CornerRadius="6"
+                            Padding="10,8"
+                            Margin="0,16,0,0"
+                            Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE7BA;"
+                                       FontFamily="Segoe MDL2 Assets"
+                                       FontSize="12"
+                                       Foreground="{StaticResource DangerBrush}"
+                                       VerticalAlignment="Top"
+                                       Margin="0,1,8,0" />
+                            <TextBlock Text="{Binding ErrorText}"
+                                       Foreground="{StaticResource DangerBrush}"
+                                       FontSize="12"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Submit -->
+                    <Button x:Name="SubmitButton"
+                            Content="{Binding SubmitText}"
+                            Command="{Binding SubmitCommand}"
+                            IsDefault="True"
+                            Height="38"
+                            Margin="0,18,0,0"
+                            FontSize="13.5"
+                            FontWeight="SemiBold">
+                        <Button.Style>
+                            <Style TargetType="{x:Type Button}" BasedOn="{StaticResource ButtonAccent}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                        <Setter Property="IsEnabled" Value="False" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <ProgressBar IsIndeterminate="True"
+                                 Margin="0,8,0,0"
+                                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+
+                    <TextBlock Text="Authentication is handled by KeyAuth."
+                               Style="{StaticResource Caption}"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               Margin="0,16,0,0" />
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Border>
+</Window>

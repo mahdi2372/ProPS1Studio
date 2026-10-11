@@ -1,0 +1,186 @@
+<UserControl x:Class="ProPS1Studio.App.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  Focusable="False">
+        <StackPanel>
+
+            <!-- Header -->
+            <DockPanel Margin="0,0,0,14">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                    <Button Command="{Binding ResetCommand}" Margin="8,0,0,0" Content="Reset to defaults" />
+                    <Button Style="{StaticResource ButtonAccent}" Command="{Binding SaveCommand}" Content="Save settings" Padding="18,8" />
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="Settings" FontSize="22" FontWeight="Bold" />
+                    <TextBlock Text="Persisted preferences stored in settings.json."
+                               Style="{StaticResource Caption}"
+                               Margin="0,4,0,0" />
+                </StackPanel>
+            </DockPanel>
+
+            <!-- General -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="General" Style="{StaticResource SectionHeader}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="Default output folder" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Column="1" Text="{Binding DefaultOutputDirectory, UpdateSourceTrigger=PropertyChanged}" Margin="8,0" />
+                        <Button Grid.Column="2" Command="{Binding BrowseOutputDirCommand}" Content="Browse..." />
+
+                        <TextBlock Grid.Row="1" Text="Conversion timeout (s)" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Row="1" Grid.Column="1"
+                                 Text="{Binding ConversionTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="8,6,8,0"
+                                 ToolTip="Seconds before the compiler process is killed (15-3600)" />
+                        <StackPanel Grid.Row="1" Grid.Column="2" Margin="8,6,0,0">
+                            <CheckBox Content="Open output folder after conversion"
+                                       IsChecked="{Binding OpenOutputFolderAfterConversion}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="2" Text="Log level" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Row="2" Grid.Column="1"
+                                 Text="{Binding LogLevelText, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="8,6,8,0"
+                                 ToolTip="Debug, Info, Warn or Error" />
+                        <StackPanel Grid.Row="2" Grid.Column="2" Margin="8,6,0,0">
+                            <CheckBox Content="Enable secret scanning by default"
+                                       IsChecked="{Binding EnableSecretScan}"
+                                       VerticalAlignment="Center" />
+                            <CheckBox Content="Encrypt script source by default"
+                                       IsChecked="{Binding EncryptScript}"
+                                       VerticalAlignment="Center" />
+                            <CheckBox Content="Protect output (encrypted stub + anti-debug) by default"
+                                       IsChecked="{Binding ProtectOutput}"
+                                       VerticalAlignment="Center"
+                                       ToolTip="Wraps the finished exe in a per-build encrypted stub that decrypts itself at launch and exits under a debugger or reverse-engineering tools" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Tools -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Conversion tools" Style="{StaticResource SectionHeader}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="ps2exe module path" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Column="1" Text="{Binding Ps2exeModulePath, UpdateSourceTrigger=PropertyChanged}" Margin="8,0" />
+                        <Button Grid.Column="2" Command="{Binding BrowsePs2exeCommand}" Content="Browse..." />
+
+                        <TextBlock Grid.Row="1" Text="UPX executable" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding UpxPath, UpdateSourceTrigger=PropertyChanged}" Margin="8,6,0,0" />
+                        <Button Grid.Row="1" Grid.Column="2" Command="{Binding BrowseUpxCommand}" Content="Browse..." />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <CheckBox Content="Compress with UPX by default" IsChecked="{Binding CompressWithUpx}" Margin="0,0,18,0" />
+                        <CheckBox Content="UPX --force (skip format checks)" IsChecked="{Binding UpxForce}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Secret scanning -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Secret scanning" Style="{StaticResource SectionHeader}" />
+                    <TextBlock Text="Extra patterns — one regular expression per line. Each is tested against the script and masked in reports."
+                               Style="{StaticResource Caption}"
+                               Margin="0,-4,0,8" />
+                    <TextBox Text="{Binding ExtraSecretPatternsText, UpdateSourceTrigger=PropertyChanged}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             VerticalContentAlignment="Top"
+                             Height="76"
+                             FontFamily="Consolas"
+                             FontSize="12"
+                             ToolTip="One regex per line, e.g.  MYAPP_[A-Z0-9]{16}" />
+                </StackPanel>
+            </Border>
+
+            <!-- Signing -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Authenticode signing (optional)" Style="{StaticResource SectionHeader}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="Certificate thumbprint" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Column="1" Text="{Binding SignCertificateThumbprint, UpdateSourceTrigger=PropertyChanged}" Margin="8,0"
+                                 FontFamily="Consolas" FontSize="12.5" />
+
+                        <TextBlock Grid.Row="1" Text="Certificate store" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Row="1" Grid.Column="1"
+                                 Text="{Binding SignCertificateStoreLocation, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="8,6,8,0"
+                                 ToolTip="CurrentUser or LocalMachine" />
+
+                        <TextBlock Grid.Row="2" Text="PFX file" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding SignPfxPath, UpdateSourceTrigger=PropertyChanged}" Margin="8,6,0,0" />
+                        <Button Grid.Row="2" Grid.Column="2" Command="{Binding BrowsePfxCommand}" Content="Browse..." Margin="8,6,0,0" />
+                    </Grid>
+                    <Grid Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Timestamp server" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Column="1" Text="{Binding TimestampServer, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0" />
+                    </Grid>
+                    <CheckBox Content="Sign automatically after each conversion"
+                              IsChecked="{Binding SignAfterConversion}"
+                              Margin="0,10,0,0" />
+                    <TextBlock Style="{StaticResource Caption}"
+                               Margin="0,8,0,0"
+                               Foreground="{StaticResource WarnBrush}"
+                               Text="The PFX password is never stored. It is read at convert time from the PROPS_SIGN_PFX_PASSWORD environment variable." />
+                </StackPanel>
+            </Border>
+
+            <!-- Status -->
+            <Border Style="{StaticResource CardTight}">
+                <StackPanel>
+                    <TextBlock Text="{Binding StatusText}" Style="{StaticResource Caption}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <TextBlock Text="{Binding SettingsFilePath}" Style="{StaticResource Caption}" FontFamily="Consolas" FontSize="11" />
+                        <TextBlock Text="  ·  " Style="{StaticResource Caption}" FontSize="11" />
+                        <TextBlock Text="{Binding LogFilePath}" Style="{StaticResource Caption}" FontFamily="Consolas" FontSize="11" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
