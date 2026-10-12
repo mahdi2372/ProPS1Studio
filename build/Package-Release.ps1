@@ -2,7 +2,7 @@
 #   publish\ProPS1Studio-portable-<version>-x64.zip
 #   publish\ProPS1Studio-Setup-<version>-x64.exe
 param(
-    [string]$Version = "1.0.0",
+    [string]$Version = "1.0.1",
     [switch]$SkipPublish
 )
 
@@ -15,7 +15,7 @@ if (-not $SkipPublish) {
     $dotnet = "$env:USERPROFILE\.dotnet\dotnet.exe"
     if (-not (Test-Path $dotnet)) { $dotnet = "dotnet" }
     Write-Host "== Publishing (Release, win-x64, self-contained) =="
-    & $dotnet publish $app -c Release -r win-x64 --self-contained true -o $publishDir -m:1 --nologo
+    & $dotnet publish $app -c Release -r win-x64 --self-contained true -o $publishDir -m:1 --nologo "-p:Version=$Version" "-p:AssemblyVersion=$Version.0" "-p:FileVersion=$Version.0"
     if ($LASTEXITCODE -ne 0) { throw "publish failed ($LASTEXITCODE)" }
 }
 

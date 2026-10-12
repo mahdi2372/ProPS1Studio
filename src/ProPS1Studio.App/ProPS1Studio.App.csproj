@@ -10,6 +10,9 @@
     <ApplicationIcon>Assets\props1.ico</ApplicationIcon>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <Description>ProPS1 Studio - professional PowerShell (.ps1) to Windows executable converter.</Description>
+    <Version>1.0.1</Version>
+    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+    <FileVersion>1.0.1.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
