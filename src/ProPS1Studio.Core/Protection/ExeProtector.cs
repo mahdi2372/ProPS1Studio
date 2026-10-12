@@ -9,10 +9,11 @@ namespace ProPS1Studio.Core.Protection;
 /// <summary>
 /// Wraps a finished executable in a per-build AES-256-CBC encrypted stub:
 /// the real program is stored as an embedded resource and decrypted at launch.
-/// A static anti-debug gate refuses to run under a debugger or with common
-/// reverse-engineering tools present. Honest scope: this is obfuscation that
-/// forces decompilation or a memory dump to inspect - not DRM or copy
-/// protection; the decryption key ships inside the executable.
+/// A static anti-debug gate refuses to run under a debugger. Honest scope:
+/// this is obfuscation that forces decompilation or a memory dump to inspect -
+/// not DRM or copy protection; the decryption key ships inside the executable.
+/// The stub deliberately avoids process-name scanning and string obfuscation:
+/// those patterns trip Windows Defender heuristics (XWorm false positives).
 /// </summary>
 public static class ExeProtector
 {
@@ -22,13 +23,9 @@ public static class ExeProtector
     /// <summary>Warning appended by the engines whenever protection is enabled.</summary>
     public const string HonestWarning =
         "Output protection: the real program is AES-256 encrypted inside a per-build stub that " +
-        "decrypts it at launch and exits when a debugger or a reverse-engineering tool is " +
-        "detected. This forces decompilation or a memory dump to inspect - it is obfuscation, " +
-        "not DRM or copy protection: the decryption key ships inside the exe.";
-
-    /// <summary>Process names that make the stub exit without running the payload.</summary>
-    private const string ToolList =
-        "dnSpy;dnSpy.x64;ILSpy;x64dbg;x32dbg;windbg;windbgx;ollydbg;ida;ida64";
+        "decrypts it at launch and exits when a debugger is attached. This forces decompilation " +
+        "or a memory dump to inspect - it is obfuscation, not DRM or copy protection: the " +
+        "decryption key ships inside the exe.";
 
     /// <summary>The pieces an engine needs to build the protected executable on disk.</summary>
     public sealed record ProtectedPayload(byte[] Blob, byte[] Key, string StubSource);
@@ -62,11 +59,7 @@ public static class ExeProtector
         Buffer.BlockCopy(iv, 0, blob, 0, 16);
         Buffer.BlockCopy(cipher, 0, blob, 16, cipher.Length);
 
-        var mask = RandomNumberGenerator.GetBytes(32);
-        var stubSource = BuildStubSource(
-            Convert.ToBase64String(Xor(key, mask)),
-            Convert.ToBase64String(mask),
-            Convert.ToBase64String(Xor(Encoding.UTF8.GetBytes(ToolList), mask)));
+        var stubSource = BuildStubSource(Convert.ToBase64String(key));
 
         return new ProtectedPayload(blob, key, stubSource);
     }
@@ -208,41 +201,27 @@ public static class ExeProtector
         return null;
     }
 
-    private static byte[] Xor(byte[] data, byte[] mask)
-    {
-        var result = new byte[data.Length];
-        for (var i = 0; i < data.Length; i++)
-        {
-            result[i] = (byte)(data[i] ^ mask[i % mask.Length]);
-        }
-
-        return result;
-    }
-
     /// <summary>The stub source is C# 5 (compiled by the .NET Framework csc): no interpolated
     /// strings, null-conditional operators, expression-bodied members or nameof.</summary>
-    private static string BuildStubSource(string ks, string km, string th) => $$"""
+    private static string BuildStubSource(string ks) => $$"""
         using System;
         using System.Diagnostics;
         using System.IO;
         using System.Reflection;
         using System.Runtime.InteropServices;
         using System.Security.Cryptography;
-        using System.Text;
 
         internal static class Q
         {
             private const string RP = "{{ResourceName}}";
             private const string KS = "{{ks}}";
-            private const string KM = "{{km}}";
-            private const string TH = "{{th}}";
 
             [DllImport("kernel32.dll")]
             private static extern bool IsDebuggerPresent();
 
             private static int Main(string[] a)
             {
-                if (Z())
+                if (Debugger.IsAttached || IsDebuggerPresent())
                 {
                     return 0;
                 }
@@ -253,7 +232,7 @@ public static class ExeProtector
                     return 1;
                 }
 
-                byte[] p = D(b, K());
+                byte[] p = D(b, Convert.FromBase64String(KS));
                 Assembly m = Assembly.Load(p);
                 MethodInfo e = m.EntryPoint;
                 if (e == null)
@@ -289,82 +268,6 @@ public static class ExeProtector
                 }
 
                 return Environment.ExitCode;
-            }
-
-            private static bool Z()
-            {
-                try
-                {
-                    if (Debugger.IsAttached)
-                    {
-                        return true;
-                    }
-
-                    if (IsDebuggerPresent())
-                    {
-                        return true;
-                    }
-
-                    string[] n = X(TH).Split(';');
-                    for (int i = 0; i < n.Length; i++)
-                    {
-                        if (n[i].Length == 0)
-                        {
-                            continue;
-                        }
-
-                        Process[] ps = Process.GetProcessesByName(n[i]);
-                        if (ps.Length > 0)
-                        {
-                            for (int j = 0; j < ps.Length; j++)
-                            {
-                                try
-                                {
-                                    ps[j].Dispose();
-                                }
-                                catch (Exception)
-                                {
-                                }
-                            }
-
-                            return true;
-                        }
-                    }
-                }
-                catch (Exception)
-                {
-                }
-
-                return false;
-            }
-
-            private static string X(string v)
-            {
-                if (v == null || v.Length == 0)
-                {
-                    return string.Empty;
-                }
-
-                byte[] d = Convert.FromBase64String(v);
-                byte[] m = Convert.FromBase64String(KM);
-                for (int i = 0; i < d.Length; i++)
-                {
-                    d[i] = (byte)(d[i] ^ m[i % m.Length]);
-                }
-
-                return Encoding.UTF8.GetString(d);
-            }
-
-            private static byte[] K()
-            {
-                byte[] s = Convert.FromBase64String(KS);
-                byte[] m = Convert.FromBase64String(KM);
-                for (int i = 0; i < s.Length; i++)
-                {
-                    s[i] = (byte)(s[i] ^ m[i % m.Length]);
-                }
-
-                return s;
             }
 
             private static byte[] G()

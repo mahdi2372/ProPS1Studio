@@ -24,9 +24,11 @@ and tests.
   ciphertext, so opening the exe in Notepad no longer shows the source. The decryption key lives
   inside the executable — this hides the script from casual inspection, not full copy protection.
 - **Output protection** — on by default: the finished exe is wrapped in a per-build AES-256
-  encrypted stub that decrypts it at launch and refuses to run under a debugger or with common
-  reverse-engineering tools (dnSpy, ILSpy, x64dbg, IDA, ...) present. Forces decompilation or a
-  memory dump to inspect — obfuscation, not DRM: the key ships inside the exe.
+  encrypted stub that decrypts it at launch and refuses to run under a debugger
+  (`Debugger.IsAttached` / `IsDebuggerPresent`). Forces decompilation or a
+  memory dump to inspect — obfuscation, not DRM: the key ships inside the exe. The stub
+  deliberately avoids process-name scanning and XOR-string obfuscation (patterns that trip
+  Defender heuristics such as the XWorm false positives).
 - **Authenticode signing** — certificate by thumbprint/store or PFX file, optional RFC 3161
   timestamp, automatic sign-after-convert. The PFX password is read only from the
   `PROPS_SIGN_PFX_PASSWORD` environment variable and never stored.

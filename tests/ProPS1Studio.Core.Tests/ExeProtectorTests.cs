@@ -55,7 +55,7 @@ public class ExeProtectorTests
         Assert.That(second.Key, Is.Not.EqualTo(first.Key), "every build gets a fresh AES key");
         Assert.That(second.Blob, Is.Not.EqualTo(first.Blob), "the same inner bytes encrypt differently");
         Assert.That(first.Key.Length, Is.EqualTo(32), "AES-256 key");
-        Assert.That(second.StubSource, Is.Not.EqualTo(first.StubSource), "obfuscated key material is per-build");
+        Assert.That(second.StubSource, Is.Not.EqualTo(first.StubSource), "embedded key material is per-build");
     }
 
     [Test]
@@ -73,7 +73,6 @@ public class ExeProtectorTests
         {
             Assert.That(payload.StubSource, Does.Contain("Debugger.IsAttached"));
             Assert.That(payload.StubSource, Does.Contain("IsDebuggerPresent"));
-            Assert.That(payload.StubSource, Does.Contain("GetProcessesByName"));
             Assert.That(payload.StubSource, Does.Contain("Assembly.Load"));
             Assert.That(payload.StubSource, Does.Contain("CreateDecryptor"));
             Assert.That(payload.StubSource, Does.Contain(ExeProtector.ResourceName));

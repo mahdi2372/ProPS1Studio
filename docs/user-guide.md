@@ -336,9 +336,10 @@ and wraps it a second time:
 - At launch the stub decrypts the executable in memory and runs it; command-line arguments,
   exit codes and console behaviour pass through unchanged.
 - Before running anything the stub performs a static anti-debug gate: it refuses to run (and
-  exits without executing the payload) when a debugger is attached, when the Windows
-  `IsDebuggerPresent` API reports one, or when common reverse-engineering tools — dnSpy,
-  ILSpy, x64dbg, x32dbg, WinDbg, OllyDbg, IDA — are running on the machine.
+  exits without executing the payload) when a debugger is attached (`Debugger.IsAttached`) or
+  when the Windows `IsDebuggerPresent` API reports one. (An earlier build also scanned for
+  reverse-engineering tool processes and XOR-obfuscated its strings; that pattern matched
+  Windows Defender's XWorm heuristic and was removed — see the [release notes](https://github.com/mahdi2372/ProPS1Studio/releases).)
 - The requested execution level (UAC manifest), version resources and icon are written into
   the stub, so the protected exe looks and behaves like the unprotected one. Signing (if
   enabled) signs the final stub.
@@ -349,8 +350,8 @@ applies per build, independently of *Encrypt script source* / *Encrypt payload* 
 combine both layers or use either alone).
 
 > **Honest scope:** the real program is AES-256 encrypted inside a per-build stub that
-> decrypts it at launch and exits when a debugger or a reverse-engineering tool is detected.
-> This forces decompilation or a memory dump to inspect — it is obfuscation, not DRM or copy
+> decrypts it at launch and exits when a debugger is attached. This forces decompilation or a
+> memory dump to inspect — it is obfuscation, not DRM or copy
 > protection: the decryption key ships inside the exe. Someone determined can attach a
 > debugger before the check, dump memory after decryption, or patch the gate. It stops
 > casual `strings`/double-click inspection and casual reversing, not a professional attacker.
