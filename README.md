@@ -1,6 +1,6 @@
 # ProPS1 Studio
 
-**Developed by Mahdi.**
+**Developed by Codna Mahdi.**
 
 Production-quality Windows desktop app that compiles PowerShell scripts (`.ps1`) into standalone
 Windows executables (`.exe`) using the open-source [ps2exe](https://github.com/MScholtes/PS2EXE)
