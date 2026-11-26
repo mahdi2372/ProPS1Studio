@@ -14,16 +14,47 @@ public partial class App : Application
 {
     private AppServices? _services;
 
+    /// <summary>Switches the application theme between "dark" and "light" at runtime by
+    /// replacing the theme resource dictionary. Safe to call before the window exists.</summary>
+    public void SwitchTheme(string theme)
+    {
+        var name = string.IsNullOrWhiteSpace(theme) ? "dark" : theme.Trim().ToLowerInvariant();
+        if (name is not ("dark" or "light"))
+        {
+            name = "dark";
+        }
+
+        var themeDictionary = new System.Windows.ResourceDictionary
+        {
+            Source = new Uri($"Themes/{name}.xaml", UriKind.Relative),
+        };
+
+        var merged = Resources.MergedDictionaries;
+        foreach (var dictionary in merged.ToList())
+        {
+            if (dictionary.Source is not null &&
+                dictionary.Source.OriginalString.StartsWith("Themes/", StringComparison.OrdinalIgnoreCase))
+            {
+                merged.Remove(dictionary);
+            }
+        }
+
+        merged.Add(themeDictionary);
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
         _services = new AppServices();
+        SwitchTheme(_services.Settings.Theme);
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
 
-        var selftest = Environment.GetEnvironmentVariable("PROPS_SELFTEST") == "1";
+        // PROPS_SELFTEST / PROPS_AUTH_BYPASS are development escape hatches; they are only
+        // honored in debug builds so a released binary cannot be steered by environment flags.
+        var selftest = IsDebugBuild() && Environment.GetEnvironmentVariable("PROPS_SELFTEST") == "1";
         var selftestPage = Environment.GetEnvironmentVariable("PROPS_SELFTEST_PAGE");
 
         // Self-test capture of the login page: show it non-modal and shut down after capture.
@@ -36,8 +67,9 @@ public partial class App : Application
             return;
         }
 
-        // Login gate: shown before the main window (skipped for self-test runs and PROPS_AUTH_BYPASS=1).
-        if (!selftest && Environment.GetEnvironmentVariable("PROPS_AUTH_BYPASS") != "1")
+        // Login gate: shown before the main window (skipped for self-test runs and, in
+        // debug builds only, PROPS_AUTH_BYPASS=1).
+        if (!selftest && !(IsDebugBuild() && Environment.GetEnvironmentVariable("PROPS_AUTH_BYPASS") == "1"))
         {
             if (_services.KeyAuthConfig.IsConfigured)
             {
@@ -136,7 +168,7 @@ public partial class App : Application
     {
         LogFatal(e.Exception);
         e.Handled = true;
-        if (Environment.GetEnvironmentVariable("PROPS_SELFTEST") == "1")
+        if (IsDebugBuild() && Environment.GetEnvironmentVariable("PROPS_SELFTEST") == "1")
         {
             Shutdown(1);
             return;
@@ -155,6 +187,16 @@ public partial class App : Application
             LogFatal(ex);
         }
     }
+
+    /// <summary>True when this binary was built with the DEBUG configuration. Development-only
+    /// escape hatches (PROPS_SELFTEST, PROPS_AUTH_BYPASS, the 1/1 dev login) must never be
+    /// reachable in released builds.</summary>
+    internal static bool IsDebugBuild()
+#if DEBUG
+        => true;
+#else
+        => false;
+#endif
 
     private void LogFatal(Exception ex)
     {

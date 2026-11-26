@@ -13,7 +13,7 @@ public sealed record SignRequest
     public string StoreLocation { get; init; } = "CurrentUser";
     public string? PfxPath { get; init; }
     public string? PfxPassword { get; init; }
-    public string? TimestampServer { get; init; } = "http://timestamp.digicert.com";
+    public string? TimestampServer { get; init; } = "https://timestamp.digicert.com";
     public string? Description { get; init; }
 }
 

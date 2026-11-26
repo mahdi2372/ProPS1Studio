@@ -23,16 +23,30 @@ public sealed class SettingsViewModel : ObservableObject
     private bool _protectOutput = true;
     private string _extraSecretPatternsText = string.Empty;
     private int _conversionTimeoutSeconds = 180;
-    private string _timestampServer = "http://timestamp.digicert.com";
+    private string _timestampServer = "https://timestamp.digicert.com";
     private string _signCertificateThumbprint = string.Empty;
     private string _signCertificateStoreLocation = "CurrentUser";
     private string _signPfxPath = string.Empty;
     private bool _signAfterConversion;
     private string _logLevel = "Info";
     private bool _openOutputFolderAfterConversion = true;
+    private string _outputPathTemplate = "{name}.exe";
+    private string _theme = "dark";
     private string _settingsFilePath;
     private string _logFilePath;
     private string _statusText = string.Empty;
+
+    // Presets
+    private readonly List<ConversionPreset> _presets = new();
+    private string _presetName = string.Empty;
+    private string _presetSelection = string.Empty;
+    private bool _presetRequireAdmin;
+    private bool _presetNoConsole;
+    private bool _presetCompressWithUpx;
+    private bool _presetEncrypt = true;
+    private bool _presetProtectOutput = true;
+    private bool _presetSignAfterConversion;
+    private int _presetTimeoutSeconds = 180;
 
     public SettingsViewModel(AppServices services)
     {
@@ -43,12 +57,18 @@ public sealed class SettingsViewModel : ObservableObject
         SaveCommand = new RelayCommand(Save);
         ResetCommand = new RelayCommand(Reset);
         BrowseOutputDirCommand = new RelayCommand(BrowseOutputDir);
+        AddPresetCommand = new RelayCommand(AddPreset, () => !string.IsNullOrWhiteSpace(PresetName));
+        RemovePresetCommand = new RelayCommand(RemovePreset, () => !string.IsNullOrWhiteSpace(PresetSelection));
+        ApplyPresetCommand = new RelayCommand(ApplyPreset, () => !string.IsNullOrWhiteSpace(PresetSelection));
+        ExportSettingsCommand = new RelayCommand(ExportSettings);
+        ImportSettingsCommand = new RelayCommand(ImportSettings);
         BrowsePs2exeCommand = new RelayCommand(() => BrowseFile(ref _ps2exeModulePath, nameof(Ps2exeModulePath),
             "ps2exe module manifest (*.psd1;*.psm1)|*.psd1;*.psm1|All files (*.*)|*.*"));
         BrowseUpxCommand = new RelayCommand(() => BrowseFile(ref _upxPath, nameof(UpxPath),
             "UPX executable (upx.exe)|upx.exe|All files (*.*)|*.*"));
         BrowsePfxCommand = new RelayCommand(() => BrowseFile(ref _signPfxPath, nameof(SignPfxPath),
             "Certificate files (*.pfx;*.p12)|*.pfx;*.p12|All files (*.*)|*.*"));
+        BrowseCertificateCommand = new RelayCommand(BrowseCertificate);
 
         LoadFromStore();
     }
@@ -59,6 +79,48 @@ public sealed class SettingsViewModel : ObservableObject
     public RelayCommand BrowsePs2exeCommand { get; }
     public RelayCommand BrowseUpxCommand { get; }
     public RelayCommand BrowsePfxCommand { get; }
+    public RelayCommand BrowseCertificateCommand { get; }
+    public RelayCommand AddPresetCommand { get; }
+    public RelayCommand RemovePresetCommand { get; }
+    public RelayCommand ApplyPresetCommand { get; }
+    public RelayCommand ExportSettingsCommand { get; }
+    public RelayCommand ImportSettingsCommand { get; }
+
+    public System.Collections.ObjectModel.ObservableCollection<string> ThemeOptions { get; } = new()
+    {
+        "dark", "light",
+    };
+
+    public System.Collections.ObjectModel.ObservableCollection<string> Presets { get; } = new();
+
+    public string PresetName
+    {
+        get => _presetName;
+        set
+        {
+            SetProperty(ref _presetName, value);
+            AddPresetCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    public string PresetSelection
+    {
+        get => _presetSelection;
+        set
+        {
+            SetProperty(ref _presetSelection, value);
+            RemovePresetCommand.RaiseCanExecuteChanged();
+            ApplyPresetCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    public bool PresetRequireAdmin { get => _presetRequireAdmin; set => SetProperty(ref _presetRequireAdmin, value); }
+    public bool PresetNoConsole { get => _presetNoConsole; set => SetProperty(ref _presetNoConsole, value); }
+    public bool PresetCompressWithUpx { get => _presetCompressWithUpx; set => SetProperty(ref _presetCompressWithUpx, value); }
+    public bool PresetEncrypt { get => _presetEncrypt; set => SetProperty(ref _presetEncrypt, value); }
+    public bool PresetProtectOutput { get => _presetProtectOutput; set => SetProperty(ref _presetProtectOutput, value); }
+    public bool PresetSignAfterConversion { get => _presetSignAfterConversion; set => SetProperty(ref _presetSignAfterConversion, value); }
+    public int PresetTimeoutSeconds { get => _presetTimeoutSeconds; set => SetProperty(ref _presetTimeoutSeconds, value); }
 
     public event Action? Saved;
 
@@ -88,6 +150,33 @@ public sealed class SettingsViewModel : ObservableObject
     public bool SignAfterConversion { get => _signAfterConversion; set => SetProperty(ref _signAfterConversion, value); }
     public string LogLevelText { get => _logLevel; set => SetProperty(ref _logLevel, value); }
     public bool OpenOutputFolderAfterConversion { get => _openOutputFolderAfterConversion; set => SetProperty(ref _openOutputFolderAfterConversion, value); }
+    public string OutputPathTemplate
+    {
+        get => _outputPathTemplate;
+        set => SetProperty(ref _outputPathTemplate, string.IsNullOrWhiteSpace(value) ? "{name}.exe" : value.Trim());
+    }
+
+    public string Theme
+    {
+        get => _theme;
+        set
+        {
+            if (!SetProperty(ref _theme, string.IsNullOrWhiteSpace(value) ? "dark" : value.Trim().ToLowerInvariant()))
+            {
+                return;
+            }
+
+            // Apply immediately so the user sees the change without saving. StaticResource
+            // resolves at load time, so the current view is re-instantiated via a navigation.
+            if (App.Current is { MainWindow: System.Windows.Window window } &&
+                window.DataContext is MainViewModel main &&
+                !string.IsNullOrWhiteSpace(main.StatusText))
+            {
+                App.Current.SwitchTheme(_theme);
+                main.Navigate(main.CurrentPageKey);
+            }
+        }
+    }
 
     public void LoadFromStore()
     {
@@ -109,6 +198,17 @@ public sealed class SettingsViewModel : ObservableObject
         SignAfterConversion = settings.SignAfterConversion;
         LogLevelText = settings.LogLevel;
         OpenOutputFolderAfterConversion = settings.OpenOutputFolderAfterConversion;
+        OutputPathTemplate = settings.OutputPathTemplate;
+        Theme = settings.Theme;
+
+        Presets.Clear();
+        _presets.Clear();
+        foreach (var preset in settings.Presets)
+        {
+            _presets.Add(preset);
+            Presets.Add(preset.Name);
+        }
+
         StatusText = string.Empty;
     }
 
@@ -140,13 +240,21 @@ public sealed class SettingsViewModel : ObservableObject
                 .ToList();
             settings.ConversionTimeoutSeconds = ConversionTimeoutSeconds;
             settings.TimestampServer = string.IsNullOrWhiteSpace(TimestampServer)
-                ? "http://timestamp.digicert.com" : TimestampServer;
+                ? "https://timestamp.digicert.com" : TimestampServer;
             settings.SignCertificateThumbprint = NullIfBlank(SignCertificateThumbprint);
             settings.SignCertificateStoreLocation = NullIfBlank(SignCertificateStoreLocation) ?? "CurrentUser";
             settings.SignPfxPath = NullIfBlank(SignPfxPath);
             settings.SignAfterConversion = SignAfterConversion;
             settings.LogLevel = string.IsNullOrWhiteSpace(LogLevelText) ? "Info" : LogLevelText;
             settings.OpenOutputFolderAfterConversion = OpenOutputFolderAfterConversion;
+            settings.OutputPathTemplate = OutputPathTemplate;
+            settings.Theme = string.IsNullOrWhiteSpace(Theme) ? "dark" : Theme;
+
+            settings.Presets = _presets
+                .Where(p => !string.IsNullOrWhiteSpace(p.Name))
+                .GroupBy(p => p.Name, StringComparer.Ordinal)
+                .Select(g => g.First())
+                .ToList();
 
             _services.SettingsStore.Save(settings);
             StatusText = $"Saved at {DateTime.Now:HH:mm:ss}.";
@@ -182,6 +290,26 @@ public sealed class SettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusText = "Reset failed: " + ex.Message;
+        }
+    }
+
+    /// <summary>Opens the certificate picker and fills in the thumbprint + store location.</summary>
+    private void BrowseCertificate()
+    {
+        var window = new Views.CertificatePickerWindow(SignCertificateStoreLocation);
+        var owner = App.Current?.MainWindow;
+        if (owner is not null)
+        {
+            window.Owner = owner;
+        }
+
+        if (window.ShowDialog() == true && !string.IsNullOrWhiteSpace(window.SelectedThumbprint))
+        {
+            SignCertificateThumbprint = window.SelectedThumbprint;
+            SignCertificateStoreLocation = string.IsNullOrWhiteSpace(SignCertificateStoreLocation)
+                ? "CurrentUser"
+                : SignCertificateStoreLocation;
+            StatusText = $"Certificate selected: {SignCertificateThumbprint}";
         }
     }
 
@@ -222,6 +350,129 @@ public sealed class SettingsViewModel : ObservableObject
         {
             field = dialog.FileName;
             OnPropertyChanged(propertyName);
+        }
+    }
+
+    private void AddPreset()
+    {
+        var name = PresetName.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        _presets.RemoveAll(p => string.Equals(p.Name, name, StringComparison.Ordinal));
+        _presets.Add(new ConversionPreset
+        {
+            Name = name,
+            RequireAdmin = PresetRequireAdmin,
+            NoConsole = PresetNoConsole,
+            CompressWithUpx = PresetCompressWithUpx,
+            Encrypt = PresetEncrypt,
+            ProtectOutput = PresetProtectOutput,
+            SignAfterConversion = PresetSignAfterConversion,
+            TimeoutSeconds = PresetTimeoutSeconds,
+        });
+
+        Presets.Clear();
+        foreach (var preset in _presets)
+        {
+            Presets.Add(preset.Name);
+        }
+
+        PresetSelection = name;
+        PresetName = string.Empty;
+        StatusText = $"Preset '{name}' saved (apply it on the next save).";
+    }
+
+    private void RemovePreset()
+    {
+        var name = PresetSelection.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        _presets.RemoveAll(p => string.Equals(p.Name, name, StringComparison.Ordinal));
+        Presets.Remove(name);
+        PresetSelection = string.Empty;
+        StatusText = $"Preset '{name}' removed (apply it on the next save).";
+    }
+
+    /// <summary>Loads the selected preset's values into the preset form for editing.</summary>
+    private void ApplyPreset()
+    {
+        var preset = _presets.FirstOrDefault(p => string.Equals(p.Name, PresetSelection, StringComparison.Ordinal));
+        if (preset is null)
+        {
+            return;
+        }
+
+        PresetName = preset.Name;
+        PresetRequireAdmin = preset.RequireAdmin;
+        PresetNoConsole = preset.NoConsole;
+        PresetCompressWithUpx = preset.CompressWithUpx;
+        PresetEncrypt = preset.Encrypt;
+        PresetProtectOutput = preset.ProtectOutput;
+        PresetSignAfterConversion = preset.SignAfterConversion;
+        PresetTimeoutSeconds = preset.TimeoutSeconds;
+        StatusText = $"Preset '{preset.Name}' loaded into the editor.";
+    }
+
+    private void ExportSettings()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export settings",
+            Filter = "JSON settings (*.json)|*.json|All files (*.*)|*.*",
+            FileName = $"ProPS1Studio-settings-{DateTime.Now:yyyyMMdd-HHmmss}.json",
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            try
+            {
+                File.Copy(_settingsFilePath, dialog.FileName, overwrite: true);
+                StatusText = $"Settings exported to {dialog.FileName}";
+            }
+            catch (Exception ex)
+            {
+                StatusText = "Export failed: " + ex.Message;
+            }
+        }
+    }
+
+    private void ImportSettings()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import settings",
+            Filter = "JSON settings (*.json)|*.json|All files (*.*)|*.*",
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var choice = MessageBox.Show(
+            $"Replace the current settings with '{Path.GetFileName(dialog.FileName)}'?\n\nCurrent settings will be overwritten.",
+            "Import settings",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (choice != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            File.Copy(dialog.FileName, _settingsFilePath, overwrite: true);
+            LoadFromStore();
+            StatusText = $"Settings imported from {dialog.FileName}";
+            Saved?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            StatusText = "Import failed: " + ex.Message;
         }
     }
 

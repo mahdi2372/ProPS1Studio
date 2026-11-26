@@ -36,6 +36,7 @@ public sealed class BatToExeViewModel : ObservableObject
     private bool _overwriteOutput;
     private bool _openFolderAfter = true;
     private bool _signAfterConversion;
+    private int _conversionTimeoutSeconds = 180;
     private string _consoleTitle = string.Empty;
     private string _consoleColorHex = string.Empty;
     private string _extraFilesText = string.Empty;
@@ -160,6 +161,11 @@ public sealed class BatToExeViewModel : ObservableObject
     public bool OverwriteOutput { get => _overwriteOutput; set => SetProperty(ref _overwriteOutput, value); }
     public bool OpenFolderAfter { get => _openFolderAfter; set => SetProperty(ref _openFolderAfter, value); }
     public bool SignAfterConversion { get => _signAfterConversion; set => SetProperty(ref _signAfterConversion, value); }
+    public int ConversionTimeoutSeconds
+    {
+        get => _conversionTimeoutSeconds;
+        set => SetProperty(ref _conversionTimeoutSeconds, Math.Clamp(value, 15, 3600));
+    }
     public string ConsoleTitle { get => _consoleTitle; set => SetProperty(ref _consoleTitle, value); }
     public string ConsoleColorHex { get => _consoleColorHex; set => SetProperty(ref _consoleColorHex, value); }
     public string ExtraFilesText { get => _extraFilesText; set => SetProperty(ref _extraFilesText, value); }
@@ -198,6 +204,27 @@ public sealed class BatToExeViewModel : ObservableObject
         ProtectOutput = settings.ProtectOutput;
         OpenFolderAfter = settings.OpenOutputFolderAfterConversion;
         SignAfterConversion = settings.SignAfterConversion;
+        ConversionTimeoutSeconds = settings.ConversionTimeoutSeconds;
+        OnPropertyChanged(nameof(HasSignConfig));
+    }
+
+    /// <summary>Applies a named conversion preset to this page's option controls.</summary>
+    public void ApplyPreset(Core.Settings.ConversionPreset preset)
+    {
+        if (preset is null || IsBusy)
+        {
+            return;
+        }
+
+        LevelAsInvoker = !preset.RequireAdmin;
+        LevelRequireAdmin = preset.RequireAdmin;
+        LevelHighestAvailable = false;
+        NoConsole = preset.NoConsole;
+        CompressPayload = preset.CompressWithUpx;
+        EncryptPayload = preset.Encrypt;
+        ProtectOutput = preset.ProtectOutput;
+        SignAfterConversion = preset.SignAfterConversion;
+        ConversionTimeoutSeconds = Math.Clamp(preset.TimeoutSeconds, 15, 3600);
         OnPropertyChanged(nameof(HasSignConfig));
     }
 
@@ -321,7 +348,7 @@ public sealed class BatToExeViewModel : ObservableObject
             return;
         }
 
-        OutputPath = Path.ChangeExtension(InputPath, ".exe") ?? string.Empty;
+        OutputPath = Core.Settings.OutputPathTemplate.Expand(_settings.OutputPathTemplate, InputPath);
     }
 
     private void ClearAll()
@@ -523,7 +550,7 @@ public sealed class BatToExeViewModel : ObservableObject
             SignAfterConversion = signRequest is not null,
             SigningFailureIsFatal = false,
             SignRequest = signRequest,
-            TimeoutSeconds = _settings.ConversionTimeoutSeconds,
+            TimeoutSeconds = ConversionTimeoutSeconds,
         };
     }
 

@@ -19,7 +19,9 @@ public sealed class ConversionRequest
     public string? Product { get; init; }
     public string? Copyright { get; init; }
     public string? FileVersion { get; init; }
-    public string? IconPath { get; init; }
+    /// <summary>set (not init) so the engine can drop the icon when the installed ps2exe
+    /// version does not support the iconFile parameter, without rebuilding the request.</summary>
+    public string? IconPath { get; set; }
 
     /// <summary>Path to the ps2exe .psd1/.psm1; null means rely on PSModulePath discovery.</summary>
     public string? Ps2exeModulePath { get; init; }

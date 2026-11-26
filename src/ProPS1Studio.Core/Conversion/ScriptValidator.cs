@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using ProPS1Studio.Core.Errors;
 
@@ -11,6 +12,7 @@ public enum ScriptEncodingKind
     Utf16BeBom,
     Utf8NoBom,
     AsciiCompatible,
+    AnsiLegacy,
     BinarySuspect,
 }
 
@@ -31,6 +33,32 @@ public sealed record ScriptValidationResult
 public static class ScriptValidator
 {
     private static readonly string[] ScriptExtensions = { ".ps1" };
+
+    /// <summary>Hard cap for the script itself (batch conversions use the same limit).</summary>
+    public const long MaxInputBytes = 10L * 1024 * 1024;
+
+    /// <summary>Windows ANSI codepage used to decode legacy scripts that are not valid UTF-8.</summary>
+    public static readonly int AnsiCodePage =
+        CultureInfo.CurrentCulture.TextInfo.ANSICodePage > 0
+            ? CultureInfo.CurrentCulture.TextInfo.ANSICodePage
+            : 1252;
+
+    private static readonly Encoding AnsiEncoding = CreateAnsiEncoding();
+
+    private static Encoding CreateAnsiEncoding()
+    {
+        try
+        {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            return Encoding.GetEncoding(AnsiCodePage);
+        }
+        catch
+        {
+            // If the codepage is unavailable, fall back to UTF-8 with replacement so
+            // validation still succeeds (the caller gets a warning about the encoding).
+            return new UTF8Encoding(false, false);
+        }
+    }
 
     public static ScriptValidationResult Validate(string path)
     {
@@ -67,6 +95,11 @@ public static class ScriptValidator
         if (info.Length == 0)
         {
             return new ScriptValidationResult { IsValid = false, Error = ErrorCatalog.InputEmpty(path) };
+        }
+
+        if (info.Length > MaxInputBytes)
+        {
+            return new ScriptValidationResult { IsValid = false, Error = ErrorCatalog.InputTooLarge(path, info.Length, MaxInputBytes) };
         }
 
         byte[] bytes;
@@ -113,6 +146,9 @@ public static class ScriptValidator
                 break;
             case ScriptEncodingKind.Utf8NoBom:
                 warnings.Add("The script is UTF-8 without a BOM. Windows PowerShell 5.1 may misread non-ASCII characters; saving with a UTF-8 BOM is recommended.");
+                break;
+            case ScriptEncodingKind.AnsiLegacy:
+                warnings.Add($"The script uses legacy ANSI encoding (codepage {AnsiCodePage}). It will be compiled as-is, but saving it as UTF-8 with a BOM is the most reliable encoding for PowerShell tooling.");
                 break;
         }
 
@@ -184,8 +220,9 @@ public static class ScriptValidator
             return nonAscii == 0 ? ScriptEncodingKind.AsciiCompatible : ScriptEncodingKind.Utf8NoBom;
         }
 
-        // Invalid UTF-8 but no NULs: treat as legacy ANSI text (still usable, with a warning).
-        return nonAscii > 0 ? ScriptEncodingKind.AsciiCompatible : ScriptEncodingKind.AsciiCompatible;
+        // Invalid UTF-8 but no NULs: legacy ANSI (Windows codepage) text. Decoded with the
+        // system ANSI codepage so non-ASCII characters survive instead of becoming mojibake.
+        return nonAscii > 0 ? ScriptEncodingKind.AnsiLegacy : ScriptEncodingKind.AsciiCompatible;
     }
 
     public static bool IsValidUtf8(ReadOnlySpan<byte> bytes)
@@ -205,12 +242,13 @@ public static class ScriptValidator
     {
         try
         {
-            return encoding switch
-            {
-                ScriptEncodingKind.Utf16LeBom => Encoding.Unicode.GetString(bytes, bomLength, bytes.Length - bomLength),
-                ScriptEncodingKind.Utf16BeBom => Encoding.BigEndianUnicode.GetString(bytes, bomLength, bytes.Length - bomLength),
-                _ => Encoding.UTF8.GetString(bytes, bomLength, bytes.Length - bomLength),
-            };
+        return encoding switch
+        {
+            ScriptEncodingKind.Utf16LeBom => Encoding.Unicode.GetString(bytes, bomLength, bytes.Length - bomLength),
+            ScriptEncodingKind.Utf16BeBom => Encoding.BigEndianUnicode.GetString(bytes, bomLength, bytes.Length - bomLength),
+            ScriptEncodingKind.AnsiLegacy => AnsiEncoding.GetString(bytes, bomLength, bytes.Length - bomLength),
+            _ => Encoding.UTF8.GetString(bytes, bomLength, bytes.Length - bomLength),
+        };
         }
         catch
         {

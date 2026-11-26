@@ -10,9 +10,8 @@
     <Product>ProPS1 Studio</Product>
     <Authors>Mahdi</Authors>
     <Copyright>Copyright (c) 2026 Mahdi</Copyright>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <!-- Version lives in ProPS1Studio.App.csproj (single source of truth); keep it out of
+         shared props so the two cannot drift apart. -->
     <NeutralLanguage>en-US</NeutralLanguage>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>

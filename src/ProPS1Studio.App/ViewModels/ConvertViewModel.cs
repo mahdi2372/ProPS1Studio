@@ -28,6 +28,7 @@ public sealed class ConvertViewModel : ObservableObject
     private bool _overwriteOutput;
     private bool _openFolderAfter = true;
     private bool _signAfterConversion;
+    private int _conversionTimeoutSeconds = 180;
     private string _title = string.Empty;
     private string _description = string.Empty;
     private string _company = string.Empty;
@@ -105,6 +106,11 @@ public sealed class ConvertViewModel : ObservableObject
     public bool OverwriteOutput { get => _overwriteOutput; set => SetProperty(ref _overwriteOutput, value); }
     public bool OpenFolderAfter { get => _openFolderAfter; set => SetProperty(ref _openFolderAfter, value); }
     public bool SignAfterConversion { get => _signAfterConversion; set => SetProperty(ref _signAfterConversion, value); }
+    public int ConversionTimeoutSeconds
+    {
+        get => _conversionTimeoutSeconds;
+        set => SetProperty(ref _conversionTimeoutSeconds, Math.Clamp(value, 15, 3600));
+    }
     public string Title { get => _title; set => SetProperty(ref _title, value); }
     public string Description { get => _description; set => SetProperty(ref _description, value); }
     public string Company { get => _company; set => SetProperty(ref _company, value); }
@@ -142,6 +148,25 @@ public sealed class ConvertViewModel : ObservableObject
         ProtectOutput = settings.ProtectOutput;
         OpenFolderAfter = settings.OpenOutputFolderAfterConversion;
         SignAfterConversion = settings.SignAfterConversion;
+        ConversionTimeoutSeconds = settings.ConversionTimeoutSeconds;
+        OnPropertyChanged(nameof(HasSignConfig));
+    }
+
+    /// <summary>Applies a named conversion preset to this page's option controls.</summary>
+    public void ApplyPreset(Core.Settings.ConversionPreset preset)
+    {
+        if (preset is null || IsBusy)
+        {
+            return;
+        }
+
+        RequireAdministrator = preset.RequireAdmin;
+        NoConsole = preset.NoConsole;
+        CompressWithUpx = preset.CompressWithUpx;
+        EncryptScript = preset.Encrypt;
+        ProtectOutput = preset.ProtectOutput;
+        SignAfterConversion = preset.SignAfterConversion;
+        ConversionTimeoutSeconds = Math.Clamp(preset.TimeoutSeconds, 15, 3600);
         OnPropertyChanged(nameof(HasSignConfig));
     }
 
@@ -154,7 +179,7 @@ public sealed class ConvertViewModel : ObservableObject
         var dialog = new OpenFileDialog
         {
             Title = "Select a PowerShell script",
-            Filter = "PowerShell scripts (*.ps1;*.psm1)|*.ps1;*.psm1|All files (*.*)|*.*",
+            Filter = "PowerShell scripts (*.ps1)|*.ps1|All files (*.*)|*.*",
             CheckFileExists = true,
             InitialDirectory = InitialDirectoryFor(_settings.LastInputDirectory),
         };
@@ -216,7 +241,7 @@ public sealed class ConvertViewModel : ObservableObject
             return;
         }
 
-        OutputPath = Path.ChangeExtension(InputPath, ".exe") ?? string.Empty;
+        OutputPath = Core.Settings.OutputPathTemplate.Expand(_settings.OutputPathTemplate, InputPath);
     }
 
     private void ClearAll()
@@ -402,7 +427,7 @@ public sealed class ConvertViewModel : ObservableObject
             SignAfterConversion = signRequest is not null,
             SigningFailureIsFatal = false,
             SignRequest = signRequest,
-            TimeoutSeconds = _settings.ConversionTimeoutSeconds,
+            TimeoutSeconds = ConversionTimeoutSeconds,
         };
     }
 

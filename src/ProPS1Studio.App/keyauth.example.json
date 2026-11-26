@@ -1,0 +1,6 @@
+{
+  "name": "your-app-name",
+  "ownerId": "0000000000",
+  "version": "1.0",
+  "endpoint": "https://keyauth.win/api/1.3/"
+}

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>ProPS1Studio.Cli</RootNamespace>
+    <AssemblyName>props1-cli</AssemblyName>
+    <Description>Headless command-line interface for ProPS1 Studio: convert, batch-to-exe, scan and environment checks.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ProPS1Studio.Core\ProPS1Studio.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -31,13 +31,21 @@ public sealed class AppSettings
     public bool ProtectOutput { get; set; } = true;
     public List<string> ExtraSecretPatterns { get; set; } = new();
     public int ConversionTimeoutSeconds { get; set; } = 180;
-    public string TimestampServer { get; set; } = "http://timestamp.digicert.com";
+    public string TimestampServer { get; set; } = "https://timestamp.digicert.com";
     public string? SignCertificateThumbprint { get; set; }
     public string? SignCertificateStoreLocation { get; set; } = "CurrentUser";
     public string? SignPfxPath { get; set; }
     public bool SignAfterConversion { get; set; }
     public string LogLevel { get; set; } = "Info";
     public bool OpenOutputFolderAfterConversion { get; set; } = true;
+
+    /// <summary>Output file name template used when deriving the output path from the input:
+    /// {name} input file name, {ext} input extension, {date} yyyyMMdd, {time} HHmmss.</summary>
+    public string OutputPathTemplate { get; set; } = "{name}.exe";
+
+    /// <summary>UI theme: "dark" or "light".</summary>
+    public string Theme { get; set; } = "dark";
+
     public List<RecentConversion> RecentConversions { get; set; } = new();
     public string? LastInputDirectory { get; set; }
     public string? LastOutputDirectory { get; set; }
@@ -48,8 +56,24 @@ public sealed class AppSettings
     /// <summary>Last remembered username. Never a password.</summary>
     public string? AuthLastUsername { get; set; }
 
+    /// <summary>Named, reusable conversion option sets; applied with one click in Convert/BatToExe.</summary>
+    public List<ConversionPreset> Presets { get; set; } = new();
+
     public AppSettings Clone() => JsonSerializer.Deserialize<AppSettings>(
         JsonSerializer.Serialize(this, SettingsStore.JsonOptions), SettingsStore.JsonOptions)!;
+}
+
+/// <summary>A named set of conversion options that can be applied to a Convert or Bat-to-exe run.</summary>
+public sealed record ConversionPreset
+{
+    public required string Name { get; init; }
+    public bool RequireAdmin { get; init; }
+    public bool NoConsole { get; init; }
+    public bool CompressWithUpx { get; init; }
+    public bool Encrypt { get; init; }
+    public bool ProtectOutput { get; init; }
+    public bool SignAfterConversion { get; init; }
+    public int TimeoutSeconds { get; init; } = 180;
 }
 
 public sealed class SettingsStore
@@ -79,27 +103,38 @@ public sealed class SettingsStore
     {
         lock (_sync)
         {
+            AppSettings? settings = null;
+            Exception? readError = null;
             try
             {
-                if (!File.Exists(_filePath))
+                if (File.Exists(_filePath))
                 {
-                    return new AppSettings();
+                    var json = File.ReadAllText(_filePath);
+                    settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
+                    if (settings is null)
+                    {
+                        throw new JsonException("Settings deserialized to null.");
+                    }
                 }
-
-                var json = File.ReadAllText(_filePath);
-                var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
-                if (settings is null)
-                {
-                    throw new JsonException("Settings deserialized to null.");
-                }
-
-                Normalize(settings);
-                return settings;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException
+                or NotSupportedException or ArgumentException)
             {
+                readError = ex;
+            }
+
+            if (readError is null)
+            {
+                var loaded = settings ?? new AppSettings();
+                Normalize(loaded);
+                return loaded;
+            }
+
+            if (readError is JsonException)
+            {
+                // Genuinely corrupt: keep a backup, then reset on disk.
                 _logger.Write(LogLevel.Warn, nameof(SettingsStore),
-                    $"Settings file was unreadable and has been reset: {ex.Message}");
+                    $"Settings file was corrupt and has been reset: {readError.Message}");
                 TryBackUpCorruptFile();
                 var defaults = new AppSettings();
                 try
@@ -113,6 +148,12 @@ public sealed class SettingsStore
 
                 return defaults;
             }
+
+            // Transient IO problem (file locked, access denied): fall back to in-memory
+            // defaults WITHOUT overwriting the file - the user's settings survive the next start.
+            _logger.Write(LogLevel.Warn, nameof(SettingsStore),
+                $"Settings file could not be read this time ({readError.Message}); using defaults until it becomes available again.");
+            return new AppSettings();
         }
     }
 

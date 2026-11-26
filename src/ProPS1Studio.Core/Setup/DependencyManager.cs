@@ -113,6 +113,11 @@ public sealed class DependencyManager : IDependencyManager
 /// </summary>
 public sealed class Ps2exeInstaller : IPs2exeInstaller
 {
+    /// <summary>ps2exe version the app is tested against; installs are pinned to it so a new
+    /// module release cannot change compiler behaviour silently. Override with
+    /// PROPS_PS2EXE_VERSION (for example to install a newer release deliberately).</summary>
+    public const string DefaultRequiredVersion = "1.18";
+
     private readonly IProcessRunner _runner;
     private readonly IAppLogger _logger;
     private readonly IPs2exeCapabilityProbe _probe;
@@ -127,14 +132,21 @@ public sealed class Ps2exeInstaller : IPs2exeInstaller
     public async Task<ToolInstallResult> InstallAsync(IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
         const string source = nameof(Ps2exeInstaller);
-        progress?.Report("Installing ps2exe from the PowerShell Gallery (CurrentUser scope)...");
-        _logger.Write(LogLevel.Info, source, "Starting ps2exe installation.");
+        var requiredVersion = Environment.GetEnvironmentVariable("PROPS_PS2EXE_VERSION");
+        if (string.IsNullOrWhiteSpace(requiredVersion))
+        {
+            requiredVersion = DefaultRequiredVersion;
+        }
 
-        var script = """
+        progress?.Report($"Installing ps2exe {requiredVersion} from the PowerShell Gallery (CurrentUser scope)...");
+        _logger.Write(LogLevel.Info, source, $"Starting ps2exe {requiredVersion} installation.");
+
+        var script = $$"""
             $ErrorActionPreference = 'Stop'
             try {
                 $opts = @{
                     Name = 'ps2exe'
+                    RequiredVersion = '{{requiredVersion}}'
                     Scope = 'CurrentUser'
                     Force = $true
                     AllowClobber = $true

@@ -131,7 +131,31 @@ public class ScriptValidatorTests
         Assert.That(result.Warnings, Has.Some.Contains("UTF-16"));
     }
 
-    [TestCase(new byte[] { 0x4D, 0x5A, 0x90, 0x00 }, ScriptEncodingKind.AsciiCompatible)]
+    [Test]
+    public void Validate_LegacyAnsiScript_IsValidAsAnsiLegacyWithWarning()
+    {
+        // 0xE9 is 'é' in Windows-1252 — invalid as UTF-8, so this is legacy ANSI text.
+        var content = Encoding.GetEncoding(1252).GetBytes("Write-Host 'café'\r\n");
+        var path = CreateTempFile(".ps1", content);
+        var result = ScriptValidator.Validate(path);
+
+        Assert.That(result.IsValid, Is.True, result.Error?.Message);
+        Assert.That(result.Encoding, Is.EqualTo(ScriptEncodingKind.AnsiLegacy));
+        Assert.That(result.Warnings, Has.Some.Contains("ANSI"));
+        Assert.That(result.LineCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Validate_OversizedScript_IsRejected()
+    {
+        var path = CreateTempFile(".ps1", new byte[ScriptValidator.MaxInputBytes + 1]);
+        var result = ScriptValidator.Validate(path);
+
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.Error!.Code, Is.EqualTo(ErrorCode.InputTooLarge));
+    }
+
+    [TestCase(new byte[] { 0x4D, 0x5A, 0x90, 0x00 }, ScriptEncodingKind.AnsiLegacy)]
     [TestCase(new byte[] { 0xEF, 0xBB, 0xBF, 0x57 }, ScriptEncodingKind.Utf8Bom)]
     [TestCase(new byte[] { 0xFF, 0xFE, 0x57, 0x00 }, ScriptEncodingKind.Utf16LeBom)]
     [TestCase(new byte[] { 0xFE, 0xFF, 0x00, 0x57 }, ScriptEncodingKind.Utf16BeBom)]
