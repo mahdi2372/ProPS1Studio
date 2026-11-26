@@ -38,6 +38,14 @@ public sealed class AppSettings
     public bool SignAfterConversion { get; set; }
     public string LogLevel { get; set; } = "Info";
     public bool OpenOutputFolderAfterConversion { get; set; } = true;
+
+    /// <summary>Output file name template used when deriving the output path from the input:
+    /// {name} input file name, {ext} input extension, {date} yyyyMMdd, {time} HHmmss.</summary>
+    public string OutputPathTemplate { get; set; } = "{name}.exe";
+
+    /// <summary>UI theme: "dark" or "light".</summary>
+    public string Theme { get; set; } = "dark";
+
     public List<RecentConversion> RecentConversions { get; set; } = new();
     public string? LastInputDirectory { get; set; }
     public string? LastOutputDirectory { get; set; }
@@ -48,8 +56,24 @@ public sealed class AppSettings
     /// <summary>Last remembered username. Never a password.</summary>
     public string? AuthLastUsername { get; set; }
 
+    /// <summary>Named, reusable conversion option sets; applied with one click in Convert/BatToExe.</summary>
+    public List<ConversionPreset> Presets { get; set; } = new();
+
     public AppSettings Clone() => JsonSerializer.Deserialize<AppSettings>(
         JsonSerializer.Serialize(this, SettingsStore.JsonOptions), SettingsStore.JsonOptions)!;
+}
+
+/// <summary>A named set of conversion options that can be applied to a Convert or Bat-to-exe run.</summary>
+public sealed record ConversionPreset
+{
+    public required string Name { get; init; }
+    public bool RequireAdmin { get; init; }
+    public bool NoConsole { get; init; }
+    public bool CompressWithUpx { get; init; }
+    public bool Encrypt { get; init; }
+    public bool ProtectOutput { get; init; }
+    public bool SignAfterConversion { get; init; }
+    public int TimeoutSeconds { get; init; } = 180;
 }
 
 public sealed class SettingsStore

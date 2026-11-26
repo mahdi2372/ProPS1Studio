@@ -65,6 +65,42 @@ public sealed class SecretScanner : ISecretScanner
         new("jwt", "JSON Web Token",
             new Regex(@"\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\b",
                 RegexOptions.Compiled), SecretSeverity.Medium),
+        new("github-pat", "GitHub fine-grained PAT",
+            new Regex(@"\bgithub_pat_[A-Za-z0-9_]{22,}\b", RegexOptions.Compiled), SecretSeverity.High),
+        new("gitlab-token", "GitLab token",
+            new Regex(@"\bglpat-[A-Za-z0-9_\-]{20}\b", RegexOptions.Compiled), SecretSeverity.High),
+        new("stripe-secret", "Stripe secret key",
+            new Regex(@"\b(?:sk|rk)_(?:live|test)_[0-9a-zA-Z]{16,}\b", RegexOptions.Compiled),
+            SecretSeverity.High),
+        new("twilio-api-key", "Twilio API key",
+            new Regex(@"\bSK[0-9a-fA-F]{32}\b", RegexOptions.Compiled), SecretSeverity.High),
+        new("discord-bot-token", "Discord bot token",
+            new Regex(@"\b[A-Za-z0-9_\-]{24}\.[A-Za-z0-9_\-]{6}\.[A-Za-z0-9_\-]{27}\b",
+                RegexOptions.Compiled), SecretSeverity.Medium),
+        new("npm-token", "npm access token",
+            new Regex(@"\bnpm_[A-Za-z0-9]{36}\b", RegexOptions.Compiled), SecretSeverity.High),
+        new("pypi-token", "PyPI token",
+            new Regex(@"\bpypi-[A-Za-z0-9_\-]{30,}\b", RegexOptions.Compiled), SecretSeverity.Medium),
+        new("google-oauth", "Google OAuth access token",
+            new Regex(@"\bya29\.[A-Za-z0-9_\-]{16,}\b", RegexOptions.Compiled), SecretSeverity.High),
+        new("facebook-token", "Facebook access token",
+            new Regex(@"\bEAA[A-Za-z0-9]{10,}\b", RegexOptions.Compiled), SecretSeverity.Medium),
+        new("telegram-bot-token", "Telegram bot token",
+            new Regex(@"\b[0-9]{8,10}:[A-Za-z0-9_\-]{35}\b", RegexOptions.Compiled),
+            SecretSeverity.High),
+        new("digitalocean-token", "DigitalOcean API token",
+            new Regex(@"\bdop_v1_[A-Za-z0-9]{16,}\b", RegexOptions.Compiled), SecretSeverity.High),
+        new("mailgun-key", "Mailgun API key",
+            new Regex(@"\bkey-[A-Za-z0-9]{32}\b", RegexOptions.Compiled), SecretSeverity.High),
+        new("sendgrid-key", "SendGrid API key",
+            new Regex(@"\bSG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}\b", RegexOptions.Compiled),
+            SecretSeverity.High),
+        new("aws-secret-key", "AWS secret access key",
+            new Regex(@"(?i)\baws_secret_access_key\s*[:=]\s*['\"]?(?<value>[A-Za-z0-9/+=]{40})",
+                RegexOptions.Compiled), SecretSeverity.High),
+        new("connection-string", "Connection string with credentials",
+            new Regex(@"(?i)\b(?:Server|Data Source)\s*=\s*[^;]+;\s*(?:Password|Pwd)\s*=\s*(?<value>[^;'\s""`]{6,})",
+                RegexOptions.Compiled), SecretSeverity.Medium, ApplyHeuristicFilter: true),
         new("generic-secret", "Hardcoded credential assignment",
             new Regex(@"(?i)\b(?:password|passwd|pwd|secret|token|api[_\-]?key|access[_\-]?key)\s*[:=]\s*['""]?(?<value>[^\s'"";,\)]{6,})",
                 RegexOptions.Compiled), SecretSeverity.Medium, ApplyHeuristicFilter: true),
@@ -149,10 +185,75 @@ public sealed class SecretScanner : ISecretScanner
                 continue;
             }
 
+            var severity = rule.Severity;
+
+            // Credential assignments holding a long, high-entropy value are almost certainly
+            // real secrets: boost them from Medium to High so they get the strictest policy.
+            if (rule.Id is "generic-secret" or "connection-string" or "connection-string-password"
+                && value.Length >= 16 && ShannonEntropy(value) >= 4.0)
+            {
+                severity = SecretSeverity.High;
+            }
+
             findings.Add(new SecretFinding(
-                rule.Id, rule.Name, line, column, Mask(value), rule.Severity));
+                rule.Id, rule.Name, line, column, Mask(value), severity));
         }
     }
+
+    /// <summary>Shannon entropy (bits per character) of a value; high values suggest randomness.</summary>
+    public static double ShannonEntropy(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return 0;
+        }
+
+        var frequencies = new Dictionary<char, int>();
+        foreach (var ch in value)
+        {
+            frequencies[ch] = frequencies.TryGetValue(ch, out var count) ? count + 1 : 1;
+        }
+
+        double entropy = 0;
+        foreach (var count in frequencies.Values)
+        {
+            var p = (double)count / value.Length;
+            entropy -= p * Math.Log2(p);
+        }
+
+        return entropy;
+    }
+
+    /// <summary>Serializes a scan result as JSON (findings are already masked) for reports and CI.</summary>
+    public static string ToJson(SecretScanResult result)
+    {
+        var sb = new StringBuilder();
+        sb.Append("{\"findings\":[");
+        for (var i = 0; i < result.Findings.Count; i++)
+        {
+            var f = result.Findings[i];
+            if (i > 0)
+            {
+                sb.Append(',');
+            }
+
+            sb.Append("{\"rule\":\"").Append(JsonEscape(f.RuleId))
+              .Append("\",\"ruleName\":\"").Append(JsonEscape(f.RuleName))
+              .Append("\",\"line\":").Append(f.LineNumber)
+              .Append(",\"column\":").Append(f.Column)
+              .Append(",\"severity\":\"").Append(f.Severity)
+              .Append("\",\"maskedValue\":\"").Append(JsonEscape(f.MaskedValue))
+              .Append("\"}");
+        }
+
+        sb.Append("],\"count\":").Append(result.Findings.Count)
+          .Append(",\"highCount\":").Append(result.HighCount)
+          .Append('}');
+        return sb.ToString();
+    }
+
+    private static string JsonEscape(string value) =>
+        value.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     /// <summary>True when the matched value is a placeholder, variable reference, or trivial string.</summary>
     public static bool IsLikelyPlaceholder(string value)

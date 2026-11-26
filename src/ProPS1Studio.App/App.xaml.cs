@@ -14,11 +14,40 @@ public partial class App : Application
 {
     private AppServices? _services;
 
+    /// <summary>Switches the application theme between "dark" and "light" at runtime by
+    /// replacing the theme resource dictionary. Safe to call before the window exists.</summary>
+    public void SwitchTheme(string theme)
+    {
+        var name = string.IsNullOrWhiteSpace(theme) ? "dark" : theme.Trim().ToLowerInvariant();
+        if (name is not ("dark" or "light"))
+        {
+            name = "dark";
+        }
+
+        var themeDictionary = new System.Windows.ResourceDictionary
+        {
+            Source = new Uri($"Themes/{name}.xaml", UriKind.Relative),
+        };
+
+        var merged = Resources.MergedDictionaries;
+        foreach (var dictionary in merged.ToList())
+        {
+            if (dictionary.Source is not null &&
+                dictionary.Source.OriginalString.StartsWith("Themes/", StringComparison.OrdinalIgnoreCase))
+            {
+                merged.Remove(dictionary);
+            }
+        }
+
+        merged.Add(themeDictionary);
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
         _services = new AppServices();
+        SwitchTheme(_services.Settings.Theme);
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;

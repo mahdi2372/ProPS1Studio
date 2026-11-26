@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -18,7 +19,7 @@ namespace ProPS1Studio.Cli;
 /// <summary>
 /// Headless command-line interface for ProPS1 Studio. Shares the same Core engine,
 /// settings and logs as the WPF app, so a CLI conversion is identical to a GUI conversion.
-/// Commands: convert, bat, scan, doctor, help.
+/// Commands: convert, bat, scan, doctor, preset, completion, help.
 /// Exit codes: 0 success, 1 conversion/scan failure, 2 usage error.
 /// </summary>
 internal static class Program
@@ -46,6 +47,8 @@ internal static class Program
                 "bat" => await RunBatAsync(rest).ConfigureAwait(false),
                 "scan" => await RunScanAsync(rest).ConfigureAwait(false),
                 "doctor" => await RunDoctorAsync(rest).ConfigureAwait(false),
+                "preset" => RunPreset(rest),
+                "completion" => RunCompletion(rest),
                 _ => UnknownCommand(command),
             };
         }
@@ -74,24 +77,89 @@ internal static class Program
         return ExitUsage;
     }
 
+    /// <summary>Expands positionals containing wildcards (* and ?) against the filesystem.</summary>
+    private static List<string> ExpandGlobs(IEnumerable<string> positionals)
+    {
+        var result = new List<string>();
+        foreach (var raw in positionals)
+        {
+            if (raw.IndexOfAny(new[] { '*', '?' }) < 0)
+            {
+                result.Add(raw);
+                continue;
+            }
+
+            var dir = Path.GetDirectoryName(raw);
+            var pattern = string.IsNullOrWhiteSpace(dir) ? raw : Path.Combine(dir, Path.GetFileName(raw));
+            foreach (var match in Directory.EnumerateFiles(string.IsNullOrWhiteSpace(dir) ? "." : dir, Path.GetFileName(raw)))
+            {
+                result.Add(match);
+            }
+        }
+
+        return result;
+    }
+
+    private static bool IsQuiet(OptionSet options) => options.GetBool("quiet");
+
     // ---------------------------------------------------------------- convert
 
     private static async Task<int> RunConvertAsync(string[] args)
     {
         var options = OptionSet.Parse(args);
-        if (options.Positionals.Count != 1)
+        var inputs = ExpandGlobs(options.Positionals);
+        if (inputs.Count == 0)
         {
-            return Usage("convert", "Exactly one .ps1 script is required.");
+            return Usage("convert", "At least one .ps1 script is required.");
         }
 
-        var input = Path.GetFullPath(options.Positionals[0]);
-        if (!File.Exists(input))
+        if (options.GetBool("watch"))
         {
-            Console.Error.WriteLine($"Input file not found: {input}");
-            return ExitFailure;
+            return await RunWatchAsync(inputs, options, (input, output) => ConvertOneAsync(input, output, options))
+                .ConfigureAwait(false);
         }
 
-        var output = Path.GetFullPath(ResolveOutput(options, input));
+        var exitCode = ExitOk;
+        foreach (var rawInput in inputs)
+        {
+            var input = Path.GetFullPath(rawInput);
+            if (!File.Exists(input))
+            {
+                Console.Error.WriteLine($"Input file not found: {input}");
+                exitCode = ExitFailure;
+                continue;
+            }
+
+            var output = Path.GetFullPath(ResolveOutput(options, input));
+            var code = await ConvertOneAsync(input, output, options).ConfigureAwait(false);
+            if (code != ExitOk)
+            {
+                exitCode = code;
+            }
+        }
+
+        return exitCode;
+    }
+
+    private static async Task<int> ConvertOneAsync(string input, string output, OptionSet options)
+    {
+        if (options.GetBool("validate-only"))
+        {
+            var validation = ScriptValidator.Validate(input);
+            if (options.GetBool("json"))
+            {
+                Console.WriteLine(Json.Object(
+                    ("valid", validation.IsValid),
+                    ("error", validation.Error?.Message)));
+            }
+            else
+            {
+                Console.WriteLine($"{input}: {(validation.IsValid ? "valid" : "invalid - " + validation.Error?.Message)}");
+            }
+
+            return validation.IsValid ? ExitOk : ExitFailure;
+        }
+
         var services = CreateServices();
         try
         {
@@ -128,6 +196,42 @@ internal static class Program
         }
     }
 
+    /// <summary>Watches the input files and re-runs the action whenever one changes (polling).</summary>
+    private static async Task<int> RunWatchAsync(
+        List<string> inputs, OptionSet options, Func<string, string, Task<int>> action)
+    {
+        var interval = options.GetIntOrDefault("watch-interval", 2);
+        var lastWrites = inputs.ToDictionary(
+            raw => raw,
+            raw => File.Exists(raw) ? new FileInfo(raw).LastWriteTimeUtc : DateTime.MinValue,
+            StringComparer.Ordinal);
+
+        Console.WriteLine($"Watching {inputs.Count} file(s); re-running on changes (interval {interval}s). Ctrl+C to stop.");
+
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(interval)).ConfigureAwait(false);
+            foreach (var rawInput in inputs)
+            {
+                var input = Path.GetFullPath(rawInput);
+                if (!File.Exists(input))
+                {
+                    continue;
+                }
+
+                var lastWrite = new FileInfo(input).LastWriteTimeUtc;
+                if (lastWrite == lastWrites.GetValueOrDefault(rawInput))
+                {
+                    continue;
+                }
+
+                lastWrites[rawInput] = lastWrite;
+                var output = Path.GetFullPath(ResolveOutput(options, input));
+                await action(input, output).ConfigureAwait(false);
+            }
+        }
+    }
+
     // ------------------------------------------------------------------- bat
 
     private static async Task<int> RunBatAsync(string[] args)
@@ -138,14 +242,59 @@ internal static class Program
             return Usage("bat", "Exactly one .bat/.cmd script is required.");
         }
 
-        var input = Path.GetFullPath(options.Positionals[0]);
-        if (!File.Exists(input))
+        var inputs = ExpandGlobs(options.Positionals);
+        if (inputs.Count == 0)
         {
-            Console.Error.WriteLine($"Input file not found: {input}");
-            return ExitFailure;
+            return Usage("bat", "At least one .bat/.cmd script is required.");
         }
 
-        var output = Path.GetFullPath(ResolveOutput(options, input));
+        if (options.GetBool("watch"))
+        {
+            return await RunWatchAsync(inputs, options, (input, output) => BatOneAsync(input, output, options))
+                .ConfigureAwait(false);
+        }
+
+        var exitCode = ExitOk;
+        foreach (var rawInput in inputs)
+        {
+            var input = Path.GetFullPath(rawInput);
+            if (!File.Exists(input))
+            {
+                Console.Error.WriteLine($"Input file not found: {input}");
+                exitCode = ExitFailure;
+                continue;
+            }
+
+            var output = Path.GetFullPath(ResolveOutput(options, input));
+            var code = await BatOneAsync(input, output, options).ConfigureAwait(false);
+            if (code != ExitOk)
+            {
+                exitCode = code;
+            }
+        }
+
+        return exitCode;
+    }
+
+    private static async Task<int> BatOneAsync(string input, string output, OptionSet options)
+    {
+        if (options.GetBool("validate-only"))
+        {
+            var validation = BatValidator.Validate(input);
+            if (options.GetBool("json"))
+            {
+                Console.WriteLine(Json.Object(
+                    ("valid", validation.IsValid),
+                    ("error", validation.Error?.Message)));
+            }
+            else
+            {
+                Console.WriteLine($"{input}: {(validation.IsValid ? "valid" : "invalid - " + validation.Error?.Message)}");
+            }
+
+            return validation.IsValid ? ExitOk : ExitFailure;
+        }
+
         var services = CreateServices();
         try
         {
@@ -207,6 +356,7 @@ internal static class Program
             var allowLow = options.GetBool("allow-low");
             var printed = 0;
             var hasFindings = false;
+            var perFile = new Dictionary<string, SecretScanResult>(StringComparer.Ordinal);
 
             foreach (var path in options.Positionals)
             {
@@ -225,12 +375,24 @@ internal static class Program
                 }
 
                 var result = scanner.Scan(text, patterns.Count > 0 ? patterns : null);
-                Console.WriteLine($"{full}: {result.Findings.Count} finding(s)");
+                perFile[full] = result;
+
+                if (!options.GetBool("json") && !IsQuiet(options))
+                {
+                    Console.WriteLine($"{full}: {result.Findings.Count} finding(s)");
+                }
 
                 foreach (var finding in result.Findings)
                 {
                     if (allowLow && finding.Severity == SecretSeverity.Low)
                     {
+                        continue;
+                    }
+
+                    if (options.GetBool("json"))
+                    {
+                        printed++;
+                        hasFindings = true;
                         continue;
                     }
 
@@ -242,9 +404,23 @@ internal static class Program
                 }
             }
 
-            Console.WriteLine(hasFindings
-                ? $"{printed} finding(s) reported."
-                : "No secrets found.");
+            if (options.GetBool("json"))
+            {
+                var files = string.Join(",", perFile.Select(kv =>
+                    Json.Object(("file", kv.Key), ("findings", SecretScanner.ToJson(kv.Value)))));
+                Console.WriteLine(Json.Object(("files", $"[{files}]"), ("count", printed)));
+            }
+            else if (IsQuiet(options))
+            {
+                // Errors only: nothing to print on success.
+            }
+            else
+            {
+                Console.WriteLine(hasFindings
+                    ? $"{printed} finding(s) reported."
+                    : "No secrets found.");
+            }
+
             return hasFindings ? ExitFailure : ExitOk;
         }
         finally
@@ -266,6 +442,22 @@ internal static class Program
             Console.WriteLine();
 
             var report = await services.Environment.ProbeAsync().ConfigureAwait(false);
+            if (options.GetBool("json"))
+            {
+                Console.WriteLine(Json.Object(
+                    ("os", report.OsDisplayVersion),
+                    ("machine", report.MachineName),
+                    ("elevated", report.IsElevated),
+                    ("dotnet", report.DotNetRuntime),
+                    ("powerShell", report.PowerShellVersion),
+                    ("ps2exeAvailable", report.Ps2exe?.IsAvailable ?? false),
+                    ("ps2exeVersion", report.Ps2exe?.ModuleVersion),
+                    ("upxAvailable", report.Upx?.Available ?? false),
+                    ("upxHashPinned", report.Upx?.MatchesPinnedHash),
+                    ("notes", string.Join("; ", report.Notes))));
+                return ExitOk;
+            }
+
             Console.WriteLine($"OS:          {report.OsDisplayVersion} ({report.OsProduct}, build {report.OsBuild})");
             Console.WriteLine($"Machine:     {report.MachineName} ({(report.Is64BitOperatingSystem ? "64-bit" : "32-bit")})");
             Console.WriteLine($"Elevated:    {report.IsElevated}");
@@ -330,6 +522,180 @@ internal static class Program
         return $"NOT installed ({upx?.Error ?? "unknown"})";
     }
 
+    // ----------------------------------------------------------------- preset
+
+    private static int RunPreset(string[] args)
+    {
+        var options = OptionSet.Parse(args);
+        var action = options.Positionals.FirstOrDefault() ?? "list";
+        var services = CreateServices();
+        try
+        {
+            var settings = services.Settings;
+            switch (action)
+            {
+                case "list":
+                    foreach (var preset in settings.Presets)
+                    {
+                        Console.WriteLine($"{preset.Name}  admin={preset.RequireAdmin} noConsole={preset.NoConsole} " +
+                                          $"upx={preset.CompressWithUpx} encrypt={preset.Encrypt} " +
+                                          $"protect={preset.ProtectOutput} sign={preset.SignAfterConversion} " +
+                                          $"timeout={preset.TimeoutSeconds}");
+                    }
+
+                    return ExitOk;
+
+                case "show":
+                {
+                    var name = options.Positionals.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        return Usage("preset", "Usage: preset show <name>");
+                    }
+
+                    var preset = settings.Presets.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.Ordinal));
+                    if (preset is null)
+                    {
+                        Console.Error.WriteLine($"No such preset: {name}");
+                        return ExitFailure;
+                    }
+
+                    Console.WriteLine(Json.Object(
+                        ("name", preset.Name),
+                        ("requireAdmin", preset.RequireAdmin),
+                        ("noConsole", preset.NoConsole),
+                        ("compressWithUpx", preset.CompressWithUpx),
+                        ("encrypt", preset.Encrypt),
+                        ("protectOutput", preset.ProtectOutput),
+                        ("signAfterConversion", preset.SignAfterConversion),
+                        ("timeoutSeconds", preset.TimeoutSeconds)));
+                    return ExitOk;
+                }
+
+                case "add":
+                {
+                    var name = options.Positionals.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        return Usage("preset", "Usage: preset add <name> [--admin] [--no-console] [--upx] [--encrypt|--no-encrypt] [--protect|--no-protect] [--sign|--no-sign] [--timeout n]");
+                    }
+
+                    var preset = new ConversionPreset
+                    {
+                        Name = name.Trim(),
+                        RequireAdmin = options.GetBool("admin"),
+                        NoConsole = options.GetBool("no-console"),
+                        CompressWithUpx = options.GetBool("upx"),
+                        Encrypt = options.GetBoolOrDefault("encrypt", true),
+                        ProtectOutput = options.GetBoolOrDefault("protect", true),
+                        SignAfterConversion = options.GetBool("sign"),
+                        TimeoutSeconds = options.GetIntOrDefault("timeout", 180),
+                    };
+
+                    settings.Presets.RemoveAll(p => string.Equals(p.Name, preset.Name, StringComparison.Ordinal));
+                    settings.Presets.Add(preset);
+                    SaveSettings(services);
+                    Console.WriteLine($"Preset '{preset.Name}' saved.");
+                    return ExitOk;
+                }
+
+                case "remove":
+                {
+                    var name = options.Positionals.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        return Usage("preset", "Usage: preset remove <name>");
+                    }
+
+                    var removed = settings.Presets.RemoveAll(p => string.Equals(p.Name, name, StringComparison.Ordinal));
+                    if (removed == 0)
+                    {
+                        Console.Error.WriteLine($"No such preset: {name}");
+                        return ExitFailure;
+                    }
+
+                    SaveSettings(services);
+                    Console.WriteLine($"Preset '{name}' removed.");
+                    return ExitOk;
+                }
+
+                default:
+                    return Usage("preset", $"Unknown action '{action}'. Use list, show, add or remove.");
+            }
+        }
+        finally
+        {
+            services.Dispose();
+        }
+    }
+
+    private static void SaveSettings(CliServices services)
+    {
+        var store = new SettingsStore(AppPaths.SettingsFilePath, services.Logger);
+        store.Save(services.Settings);
+    }
+
+    // -------------------------------------------------------------- completion
+
+    private static int RunCompletion(string[] args)
+    {
+        var options = OptionSet.Parse(args);
+        var shell = (options.Positionals.FirstOrDefault() ?? "powershell").ToLowerInvariant();
+        var commands = string.Join(" ", new[] { "convert", "bat", "scan", "doctor", "preset", "completion", "help" });
+        var commonOptions = string.Join(" ", new[]
+        {
+            "-o --output", "--force", "--admin", "--no-console", "--upx --no-upx",
+            "--encrypt --no-encrypt", "--protect --no-protect", "--timeout", "--scan-off",
+            "--secrets-fatal --secrets-warn", "--sign --no-sign", "--sign-pfx", "--sign-thumbprint",
+            "--sign-store", "--icon", "--title --description --company --product --version",
+            "-v --verbose", "-q --quiet", "--json", "--watch", "--watch-interval", "--validate-only",
+        });
+
+        if (shell is "bash" or "zsh")
+        {
+            const string script = """
+                _props1_cli_completion() {
+                    local cur prev
+                    cur="${COMP_WORDS[COMP_CWORD]}"
+                    prev="${COMP_WORDS[COMP_CWORD-1]}"
+                    local cmds="__COMMANDS__"
+                    if [ "$COMP_CWORD" -eq 1 ]; then
+                        COMPREPLY=( $(compgen -W "$cmds" -- "$cur") )
+                        return 0
+                    fi
+                    case "$prev" in
+                        -o|--output|--sign-pfx|--sign-thumbprint|--sign-store|--icon|--timeout|--watch-interval)
+                            COMPREPLY=( $(compgen -f -- "$cur") ) ;;
+                        *)
+                            COMPREPLY=( $(compgen -W "__COMMON_OPTIONS__" -- "$cur") ) ;;
+                    esac
+                }
+                complete -F _props1_cli_completion props1-cli
+                """;
+            Console.WriteLine(script.Replace("__COMMANDS__", commands).Replace("__COMMON_OPTIONS__", commonOptions));
+            return ExitOk;
+        }
+
+        const string powerShell = """
+            function ProPS1CliTabExpansion {
+                param($command, $parameter, $wordToComplete)
+                $commands = '__COMMANDS__'
+                $options = '__COMMON_OPTIONS__'
+                if ($parameter -eq '') {
+                    return $commands.Split(' ') | Where-Object { $_ -like "$wordToComplete*" }
+                }
+                return $options.Split(' ') | Where-Object { $_ -like "$wordToComplete*" }
+            }
+            Register-ArgumentCompleter -Native -CommandName props1-cli -ScriptBlock {
+                param($wordToComplete, $cursorPosition)
+                $tokens = $wordToComplete -split '\s+'
+                ProPS1CliTabExpansion -command $tokens[0] -parameter $tokens[1] -wordToComplete $wordToComplete
+            }
+            """;
+        Console.WriteLine(powerShell.Replace("__COMMANDS__", commands).Replace("__COMMON_OPTIONS__", commonOptions));
+        return ExitOk;
+    }
+
     // --------------------------------------------------------------- shared
 
     private static string ResolveOutput(OptionSet options, string input)
@@ -345,10 +711,29 @@ internal static class Program
 
     private static int Report(ConversionResult result, OptionSet options)
     {
+        if (options.GetBool("json"))
+        {
+            Console.WriteLine(Json.Object(
+                ("success", result.Success),
+                ("output", result.OutputPath),
+                ("sizeBytes", result.OutputSizeBytes),
+                ("upxCompressed", result.UpxCompressed),
+                ("encrypted", result.Encrypted),
+                ("protected", result.Protected),
+                ("signed", result.Signed),
+                ("error", result.Error?.ToString()),
+                ("warnings", string.Join("; ", result.Warnings))));
+            return result.Success ? ExitOk : ExitFailure;
+        }
+
         if (!result.Success)
         {
             PrintFailure(result.Error);
-            PrintWarningsAndSecrets(result.Warnings, result.SecretFindings);
+            if (!IsQuiet(options))
+            {
+                PrintWarningsAndSecrets(result.Warnings, result.SecretFindings);
+            }
+
             if (options.GetBool("verbose"))
             {
                 PrintCompilerOutput(result.CompilerOutput);
@@ -357,13 +742,17 @@ internal static class Program
             return ExitFailure;
         }
 
-        Console.WriteLine($"OK  {result.OutputPath} ({ErrorCatalog.FormatBytes(result.OutputSizeBytes)}) in {result.Duration:h\\:mm\\:ss}");
-        Console.WriteLine($"    PE: {result.Pe?.MachineDisplayName ?? "unknown"} | " +
-                          $"UPX: {(result.UpxCompressed ? "yes" : "no")} | " +
-                          $"encrypted: {(result.Encrypted ? "yes" : "no")} | " +
-                          $"protected: {(result.Protected ? "yes" : "no")} | " +
-                          $"signed: {(result.Signed ? "yes" : "no")}");
-        PrintWarningsAndSecrets(result.Warnings, result.SecretFindings);
+        if (!IsQuiet(options))
+        {
+            Console.WriteLine($"OK  {result.OutputPath} ({ErrorCatalog.FormatBytes(result.OutputSizeBytes)}) in {result.Duration:h\\:mm\\:ss}");
+            Console.WriteLine($"    PE: {result.Pe?.MachineDisplayName ?? "unknown"} | " +
+                              $"UPX: {(result.UpxCompressed ? "yes" : "no")} | " +
+                              $"encrypted: {(result.Encrypted ? "yes" : "no")} | " +
+                              $"protected: {(result.Protected ? "yes" : "no")} | " +
+                              $"signed: {(result.Signed ? "yes" : "no")}");
+            PrintWarningsAndSecrets(result.Warnings, result.SecretFindings);
+        }
+
         if (options.GetBool("verbose"))
         {
             PrintCompilerOutput(result.CompilerOutput);
@@ -374,10 +763,28 @@ internal static class Program
 
     private static int Report(BatConversionResult result, OptionSet options)
     {
+        if (options.GetBool("json"))
+        {
+            Console.WriteLine(Json.Object(
+                ("success", result.Success),
+                ("output", result.OutputPath),
+                ("sizeBytes", result.OutputSizeBytes),
+                ("payloadEncrypted", result.PayloadEncrypted),
+                ("protected", result.Protected),
+                ("signed", result.Signed),
+                ("error", result.Error?.ToString()),
+                ("warnings", string.Join("; ", result.Warnings))));
+            return result.Success ? ExitOk : ExitFailure;
+        }
+
         if (!result.Success)
         {
             PrintFailure(result.Error);
-            PrintWarningsAndSecrets(result.Warnings, result.SecretFindings);
+            if (!IsQuiet(options))
+            {
+                PrintWarningsAndSecrets(result.Warnings, result.SecretFindings);
+            }
+
             if (options.GetBool("verbose"))
             {
                 PrintCompilerOutput(result.CompilerOutput);
@@ -386,12 +793,16 @@ internal static class Program
             return ExitFailure;
         }
 
-        Console.WriteLine($"OK  {result.OutputPath} ({ErrorCatalog.FormatBytes(result.OutputSizeBytes)}) in {result.Duration:h\\:mm\\:ss}");
-        Console.WriteLine($"    PE: {result.Pe?.MachineDisplayName ?? "unknown"} | " +
-                          $"payload: {(result.PayloadEncrypted ? "encrypted" : "plain")} | " +
-                          $"protected: {(result.Protected ? "yes" : "no")} | " +
-                          $"signed: {(result.Signed ? "yes" : "no")}");
-        PrintWarningsAndSecrets(result.Warnings, result.SecretFindings);
+        if (!IsQuiet(options))
+        {
+            Console.WriteLine($"OK  {result.OutputPath} ({ErrorCatalog.FormatBytes(result.OutputSizeBytes)}) in {result.Duration:h\\:mm\\:ss}");
+            Console.WriteLine($"    PE: {result.Pe?.MachineDisplayName ?? "unknown"} | " +
+                              $"payload: {(result.PayloadEncrypted ? "encrypted" : "plain")} | " +
+                              $"protected: {(result.Protected ? "yes" : "no")} | " +
+                              $"signed: {(result.Signed ? "yes" : "no")}");
+            PrintWarningsAndSecrets(result.Warnings, result.SecretFindings);
+        }
+
         if (options.GetBool("verbose"))
         {
             PrintCompilerOutput(result.CompilerOutput);
@@ -460,7 +871,9 @@ internal static class Program
             StoreLocation = string.IsNullOrWhiteSpace(store) ? "CurrentUser" : store,
             // The password is never passed via argv; it comes from the environment only.
             PfxPassword = Environment.GetEnvironmentVariable("PROPS_SIGN_PFX_PASSWORD"),
-            TimestampServer = settings.TimestampServer,
+            // --no-timestamp opts out of RFC 3161 timestamping.
+            TimestampServer = options.GetBool("no-timestamp") ? null : settings.TimestampServer,
+            Description = options.GetString("sign-description"),
         };
     }
 
@@ -559,6 +972,11 @@ internal static class Program
               bat <script.bat|cmd>     Build a batch script into a .NET launcher .exe
               scan <file> [file2 ...]   Scan files for hardcoded secrets (masked output)
               doctor                     Print an environment health report
+              preset list               Show saved conversion presets
+              preset add <name> ...     Save a named conversion preset
+              preset show <name>        Print one preset as JSON
+              preset remove <name>      Delete a saved preset
+              completion [bash|zsh|powershell]  Print shell tab-completion script
               help                       Show this help
 
             COMMON OPTIONS
@@ -579,17 +997,74 @@ internal static class Program
               --sign-store <location>    Certificate store location (default: CurrentUser)
               --icon <path>              Custom .ico for ps2exe conversions
               --title/--description/--company/--product/--version  Version-resource fields
+              --no-timestamp             Skip RFC 3161 timestamping during signing
+              --sign-description <text>  Signing description (CP/CS path text)
               -v, --verbose               Print compiler output
+              -q, --quiet                Only print errors
+              --json                     Print machine-readable JSON results
+              --watch                    Re-run on input file changes (polling)
+              --watch-interval <sec>     Watch poll interval (default 2)
+              --validate-only            Validate the input only; no conversion
+              scan: --allow-low          Include Low-severity findings
+
+            GLOB PATTERNS
+              Inputs accept wildcards: 'props1-cli convert .\scripts\*.ps1' converts
+              every matching script. With --watch each file re-runs on change.
 
             EXAMPLES
               props1-cli convert .\scripts\deploy.ps1 --admin --upx --encrypt -v
+              props1-cli convert .\scripts\*.ps1 --force
+              props1-cli convert .\scripts\deploy.ps1 --watch --watch-interval 3
+              props1-cli convert .\scripts\deploy.ps1 --validate-only --json
               props1-cli bat .\setup.bat --protect --title "Setup" --version 1.2.3.4
               props1-cli scan .\scripts\deploy.ps1 --allow-low
-              props1-cli doctor
+              props1-cli preset add portable --encrypt --no-protect --timeout 300
+              props1-cli doctor --json
+              props1-cli completion bash | bash
 
             The PFX password is read only from the PROPS_SIGN_PFX_PASSWORD environment
             variable - never from the command line. Exit codes: 0 success, 1 failure,
             2 usage error.
             """);
+    }
+}
+
+/// <summary>Minimal JSON output helpers for machine-readable CLI results.</summary>
+internal static class Json
+{
+    public static string Object(params (string Key, object? Value)[] properties)
+    {
+        var parts = properties.Select(p => $"\"{Escape(p.Key)}\":{Value(p.Value)}");
+        return "{" + string.Join(",", parts) + "}";
+    }
+
+    public static string Value(object? value) => value switch
+    {
+        null => "null",
+        string text => $"\"{Escape(text)}\"",
+        bool b => b ? "true" : "false",
+        int i => i.ToString(CultureInfo.InvariantCulture),
+        long l => l.ToString(CultureInfo.InvariantCulture),
+        _ => $"\"{Escape(value.ToString() ?? string.Empty)}\"",
+    };
+
+    public static string Escape(string text)
+    {
+        var sb = new StringBuilder(text.Length + 8);
+        foreach (var c in text)
+        {
+            sb.Append(c switch
+            {
+                '\\' => "\\\\",
+                '"' => "\\\"",
+                '\n' => "\\n",
+                '\r' => "\\r",
+                '\t' => "\\t",
+                <= '\u001f' => $"\\u{(int)c:x4}",
+                _ => c.ToString(),
+            });
+        }
+
+        return sb.ToString();
     }
 }

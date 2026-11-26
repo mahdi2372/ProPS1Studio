@@ -10,6 +10,8 @@
             <!-- Header -->
             <DockPanel Margin="0,0,0,14">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                    <Button Command="{Binding ExportSettingsCommand}" Margin="0,0,8,0" Content="Export..." />
+                    <Button Command="{Binding ImportSettingsCommand}" Margin="0,0,8,0" Content="Import..." />
                     <Button Command="{Binding ResetCommand}" Margin="8,0,0,0" Content="Reset to defaults" />
                     <Button Style="{StaticResource ButtonAccent}" Command="{Binding SaveCommand}" Content="Save settings" Padding="18,8" />
                 </StackPanel>
@@ -35,29 +37,36 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <TextBlock Text="Default output folder" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBlock Text="Appearance" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <ComboBox Grid.Column="1" Width="160"
+                                  ItemsSource="{Binding ThemeOptions}"
+                                  SelectedItem="{Binding Theme}"
+                                  Margin="8,0,8,0" />
+                        <StackPanel Grid.Column="2" Margin="8,0,0,0">
+                            <TextBlock Text="Switches immediately; saved with the settings."
+                                       Style="{StaticResource Caption}" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="1" Text="Default output folder" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
                         <TextBox Grid.Column="1" Text="{Binding DefaultOutputDirectory, UpdateSourceTrigger=PropertyChanged}" Margin="8,0" />
                         <Button Grid.Column="2" Command="{Binding BrowseOutputDirCommand}" Content="Browse..." />
 
-                        <TextBlock Grid.Row="1" Text="Conversion timeout (s)" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
-                        <TextBox Grid.Row="1" Grid.Column="1"
+                        <TextBlock Grid.Row="2" Text="Conversion timeout (s)" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Row="2" Grid.Column="1"
                                  Text="{Binding ConversionTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"
                                  Margin="8,6,8,0"
                                  ToolTip="Seconds before the compiler process is killed (15-3600)" />
-                        <StackPanel Grid.Row="1" Grid.Column="2" Margin="8,6,0,0">
-                            <CheckBox Content="Open output folder after conversion"
-                                       IsChecked="{Binding OpenOutputFolderAfterConversion}"
-                                       VerticalAlignment="Center" />
-                        </StackPanel>
 
-                        <TextBlock Grid.Row="2" Text="Log level" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
-                        <TextBox Grid.Row="2" Grid.Column="1"
+                        <TextBlock Grid.Row="3" Text="Log level" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Row="3" Grid.Column="1"
                                  Text="{Binding LogLevelText, UpdateSourceTrigger=PropertyChanged}"
                                  Margin="8,6,8,0"
                                  ToolTip="Debug, Info, Warn or Error" />
-                        <StackPanel Grid.Row="2" Grid.Column="2" Margin="8,6,0,0">
+                        <StackPanel Grid.Row="3" Grid.Column="2" Margin="8,6,0,0">
                             <CheckBox Content="Enable secret scanning by default"
                                        IsChecked="{Binding EnableSecretScan}"
                                        VerticalAlignment="Center" />
@@ -68,6 +77,18 @@
                                        IsChecked="{Binding ProtectOutput}"
                                        VerticalAlignment="Center"
                                        ToolTip="Wraps the finished exe in a per-build encrypted stub that decrypts itself at launch and exits under a debugger or reverse-engineering tools" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="4" Text="Output name template" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Row="4" Grid.Column="1"
+                                 Text="{Binding OutputPathTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="8,6,8,0"
+                                 FontFamily="Consolas" FontSize="12"
+                                 ToolTip="Tokens: {name} input name, {ext} extension, {date} yyyyMMdd, {time} HHmmss" />
+                        <StackPanel Grid.Row="4" Grid.Column="2" Margin="8,6,0,0">
+                            <CheckBox Content="Open output folder after conversion"
+                                       IsChecked="{Binding OpenOutputFolderAfterConversion}"
+                                       VerticalAlignment="Center" />
                         </StackPanel>
                     </Grid>
                 </StackPanel>
@@ -121,6 +142,65 @@
                 </StackPanel>
             </Border>
 
+            <!-- Presets -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Conversion presets" Style="{StaticResource SectionHeader}" />
+                    <TextBlock Text="Named option sets you can apply with one click on the Convert and Bat-to-exe pages."
+                               Style="{StaticResource Caption}"
+                               Margin="0,-4,0,8" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="New preset name" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <TextBox Grid.Column="1" Text="{Binding PresetName, UpdateSourceTrigger=PropertyChanged}" Margin="8,0" />
+                        <Button Grid.Column="2" Command="{Binding AddPresetCommand}" Content="Add preset" />
+
+                        <TextBlock Grid.Row="1" Text="Existing presets" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Presets}"
+                                  SelectedItem="{Binding PresetSelection}"
+                                  Margin="8,6,8,0" />
+                        <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
+                            <Button Command="{Binding ApplyPresetCommand}" Content="Load" Margin="0,0,8,0" />
+                            <Button Command="{Binding RemovePresetCommand}" Content="Remove" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="2" Text="Require admin" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <CheckBox Grid.Row="2" Grid.Column="1" Content="requireAdministrator manifest"
+                                  IsChecked="{Binding PresetRequireAdmin}" Margin="8,6,0,0" VerticalAlignment="Center" />
+
+                        <TextBlock Grid.Row="3" Text="Window / payload" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <StackPanel Grid.Row="3" Grid.Column="1" Margin="8,6,0,0">
+                            <CheckBox Content="No console (windowed)" IsChecked="{Binding PresetNoConsole}" Margin="0,0,18,0" />
+                            <CheckBox Content="Encrypt payload" IsChecked="{Binding PresetEncrypt}" Margin="0,0,18,0" />
+                            <CheckBox Content="Protect output (encrypted stub)" IsChecked="{Binding PresetProtectOutput}" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="4" Text="Tools / timeout" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                        <StackPanel Grid.Row="4" Grid.Column="1" Margin="8,6,0,0">
+                            <CheckBox Content="Compress with UPX" IsChecked="{Binding PresetCompressWithUpx}" Margin="0,0,18,0" />
+                            <CheckBox Content="Sign after conversion" IsChecked="{Binding PresetSignAfterConversion}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="4" Grid.Column="2" Margin="8,6,0,0">
+                            <TextBlock Text="Timeout (s)" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
+                            <TextBox Text="{Binding PresetTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="70" Margin="0,0,0,6" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <!-- Signing -->
             <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                 <StackPanel>
@@ -138,8 +218,10 @@
                         </Grid.RowDefinitions>
 
                         <TextBlock Text="Certificate thumbprint" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
-                        <TextBox Grid.Column="1" Text="{Binding SignCertificateThumbprint, UpdateSourceTrigger=PropertyChanged}" Margin="8,0"
+                        <TextBox Grid.Column="1" Text="{Binding SignCertificateThumbprint, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,8,0"
                                  FontFamily="Consolas" FontSize="12.5" />
+                        <Button Grid.Column="2" Command="{Binding BrowseCertificateCommand}" Content="Browse..." Margin="0,0,8,0"
+                                ToolTip="Pick a signing certificate from the selected store" />
 
                         <TextBlock Grid.Row="1" Text="Certificate store" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" />
                         <TextBox Grid.Row="1" Grid.Column="1"

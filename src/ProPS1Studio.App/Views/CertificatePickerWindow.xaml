@@ -1,0 +1,63 @@
+<Window x:Class="ProPS1Studio.App.Views.CertificatePickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Height="420" Width="680"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgBrush}"
+        Foreground="{StaticResource TextBrush}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Certificates in this store"
+                   FontSize="15" FontWeight="SemiBold"
+                   Margin="0,0,0,6" />
+        <TextBlock Text="Pick the certificate to use for Authenticode signing. Expired certificates are marked."
+                   Style="{StaticResource Caption}"
+                   Margin="0,0,0,10" />
+
+        <ListBox x:Name="ListBox" Grid.Row="1"
+                 ItemsSource="{Binding Certificates}"
+                 BorderBrush="{StaticResource StrokeBrush}"
+                 Background="{StaticResource SurfaceAltBrush}"
+                 Foreground="{StaticResource TextBrush}"
+                 SelectionMode="Single">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Margin="4,8">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Subject}" FontWeight="SemiBold" />
+                            <TextBlock Text="  ·  valid until "
+                                       Foreground="{StaticResource TextDimBrush}" />
+                            <TextBlock Text="{Binding NotAfter:StringFormat=yyyy-MM-dd}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                            <TextBlock Text="Issuer: " Foreground="{StaticResource TextDimBrush}" />
+                            <TextBlock Text="{Binding Issuer}" Foreground="{StaticResource TextDimBrush}" />
+                            <TextBlock Text="  ·  "
+                                       Foreground="{StaticResource TextDimBrush}" />
+                            <TextBlock Text="{Binding Thumbprint}" FontFamily="Consolas" FontSize="11.5" />
+                            <TextBlock Text="  " />
+                            <TextBlock Text="{Binding IsValid, Converter={StaticResource BoolToText}}"
+                                       Foreground="{Binding IsValid, Converter={StaticResource BoolToBrush}}" />
+                        </StackPanel>
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Cancel" Click="OnCancel"
+                    IsCancel="True"
+                    Margin="0,0,8,0" />
+            <Button Content="Use this certificate"
+                    Style="{StaticResource ButtonAccent}"
+                    Click="OnConfirm"
+                    Padding="16,7" />
+        </StackPanel>
+    </Grid>
+</Window>

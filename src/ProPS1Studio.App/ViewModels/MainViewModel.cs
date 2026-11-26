@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using System.Reflection;
 using ProPS1Studio.App.Mvvm;
 using ProPS1Studio.App.Services;
@@ -20,7 +22,9 @@ public sealed class MainViewModel : ObservableObject
     private readonly AppServices _services;
     private NavItem? _selectedNav;
     private object _currentViewModel;
+    private string _currentPageKey = "dashboard";
     private string _statusText = "Ready";
+    private string _presetSelection = string.Empty;
 
     public MainViewModel(AppServices services)
     {
@@ -39,7 +43,9 @@ public sealed class MainViewModel : ObservableObject
             var fresh = services.SettingsStore.Load();
             Convert.ApplySettings(fresh);
             BatToExe.ApplySettings(fresh);
+            ReloadPresets();
         };
+        ReloadPresets();
 
         NavItems = new List<NavItem>
         {
@@ -67,6 +73,65 @@ public sealed class MainViewModel : ObservableObject
     public DiagnosticsViewModel Diagnostics { get; }
     public HelpViewModel Help { get; }
 
+    /// <summary>Saved conversion presets for quick application on the Convert/BAT pages.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<string> Presets { get; } = new();
+
+    /// <summary>True when at least one saved preset exists (controls preset bar visibility).</summary>
+    public bool HasPresets => Presets.Count > 0;
+
+    public string PresetSelection
+    {
+        get => _presetSelection;
+        set
+        {
+            if (!SetProperty(ref _presetSelection, value))
+            {
+                return;
+            }
+
+            ApplyPresetCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    public RelayCommand ApplyPresetCommand { get; } = new(ApplyPreset, () => !string.IsNullOrWhiteSpace(PresetSelection));
+
+    private void ReloadPresets()
+    {
+        Presets.Clear();
+        foreach (var preset in _services.SettingsStore.Load().Presets)
+        {
+            Presets.Add(preset.Name);
+        }
+
+        OnPropertyChanged(nameof(HasPresets));
+    }
+
+    private void ApplyPreset()
+    {
+        var preset = _services.SettingsStore.Load()
+            .Presets.FirstOrDefault(p => string.Equals(p.Name, PresetSelection, StringComparison.Ordinal));
+        if (preset is null)
+        {
+            StatusText = $"Preset '{PresetSelection}' no longer exists.";
+            return;
+        }
+
+        switch (_currentPageKey)
+        {
+            case "convert":
+                Convert.ApplyPreset(preset);
+                break;
+            case "bat2exe":
+                BatToExe.ApplyPreset(preset);
+                break;
+            default:
+                StatusText = "Switch to the Convert or BAT → EXE page to apply a preset.";
+                return;
+        }
+
+        StatusText = $"Applied preset '{preset.Name}'.";
+    }
+
     public string VersionText =>
         "v" + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0")
         + " · Developed by Mahdi";
@@ -82,6 +147,9 @@ public sealed class MainViewModel : ObservableObject
         get => _currentViewModel;
         private set => SetProperty(ref _currentViewModel, value);
     }
+
+    /// <summary>Key of the currently displayed page (dashboard, convert, ...).</summary>
+    public string CurrentPageKey => _currentPageKey;
 
     public NavItem? SelectedNavItem
     {
@@ -111,6 +179,7 @@ public sealed class MainViewModel : ObservableObject
         };
 
         CurrentViewModel = page;
+        _currentPageKey = key;
         if (page is INavigable navigable)
         {
             navigable.OnNavigatedTo();

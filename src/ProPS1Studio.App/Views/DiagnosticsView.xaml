@@ -26,6 +26,8 @@
                         <TextBlock Text="Open log file" Margin="7,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
+                <Button Command="{Binding ExportLogCommand}" Margin="8,0,0,0" Content="Export log" />
+                <Button Command="{Binding CopyReportCommand}" Margin="8,0,0,0" Content="Copy report" />
                 <Button Style="{StaticResource ButtonAccent}" Command="{Binding ExportCommand}" Content="Export diagnostics" Padding="16,8" />
             </StackPanel>
             <StackPanel>
@@ -47,6 +49,17 @@
                                Foreground="{StaticResource TextDimBrush}"
                                TextTrimming="CharacterEllipsis" />
                 </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                    <TextBlock Text="Level" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" Margin="0,0,6,0" />
+                    <ComboBox Width="90"
+                              ItemsSource="{Binding LevelOptions}"
+                              SelectedItem="{Binding LevelFilter}" />
+                    <TextBlock Text="Search" VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" Margin="14,0,6,0" />
+                    <TextBox Width="260"
+                             Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}"
+                             VerticalAlignment="Center"
+                             Padding="6,2" />
+                </StackPanel>
                 <CheckBox Content="Auto-scroll to newest entries"
                           IsChecked="{Binding AutoScroll}"
                           Margin="0,10,0,0" />
@@ -56,7 +69,7 @@
         <!-- Log -->
         <Border Grid.Row="2" Style="{StaticResource CardTight}" Padding="0" MinHeight="200">
             <ListBox x:Name="LogList"
-                     ItemsSource="{Binding Entries}"
+                     ItemsSource="{Binding FilteredEntries}"
                      Background="Transparent"
                      BorderThickness="0"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
