@@ -267,15 +267,16 @@ public sealed class BatToExeEngine
             string? signatureStatus = null;
             if (request.SignAfterConversion)
             {
-                var signError = await SignAsync(request, outputFull, warnings, cancellationToken).ConfigureAwait(false);
+                var (signError, wasSigned, signStatus) =
+                    await SignAsync(request, outputFull, warnings, cancellationToken).ConfigureAwait(false);
                 if (signError is not null)
                 {
                     TryDeleteFile(outputFull);
                     return Fail(signError, warnings, compilerOutput, started, findings);
                 }
 
-                signed = _lastSignSucceeded;
-                signatureStatus = _lastSignatureStatus;
+                signed = wasSigned;
+                signatureStatus = signStatus;
             }
 
             // Final facts after the copy (and optional signing).
@@ -442,6 +443,16 @@ public sealed class BatToExeEngine
             if (string.IsNullOrEmpty(name))
             {
                 return ErrorCatalog.InvalidOption("Bundled files", $"'{extraPath}' does not name a file.");
+            }
+
+            // The name travels inside a tab-delimited table in the generated launcher, and is
+            // re-extracted with Path.GetFileName at runtime; these names would corrupt the
+            // table or escape the extraction directory.
+            if (name.Contains('\t') || name.Contains('\r') || name.Contains('\n') ||
+                name == "." || name == "..")
+            {
+                return ErrorCatalog.InvalidOption("Bundled files",
+                    $"'{name}' cannot be bundled: file names with tabs, line breaks, or '.'/'..' are not supported.");
             }
 
             if (string.Equals(name, scriptFileName, StringComparison.OrdinalIgnoreCase))
@@ -705,47 +716,43 @@ public sealed class BatToExeEngine
         return null;
     }
 
-    private bool _lastSignSucceeded;
-    private string? _lastSignatureStatus;
-
-    private static AppError? HandleSignFailure(AppError error, bool fatal, List<string> warnings)
-    {
-        if (fatal)
-        {
-            return error;
-        }
-
-        warnings.Add(error.ToString());
-        return null;
-    }
-
-    private async Task<AppError?> SignAsync(
+    /// <summary>Result of the signing stage: null error means the stage completed (possibly
+    /// with warnings); <paramref name="Signed"/>/<paramref name="Status"/> are only meaningful
+    /// then. No instance state - the caller keeps the outcome of its own call.</summary>
+    private async Task<(AppError? Error, bool Signed, string? Status)> SignAsync(
         BatConversionRequest request,
         string outputFull,
         List<string> warnings,
         CancellationToken cancellationToken)
     {
-        _lastSignSucceeded = false;
-        _lastSignatureStatus = null;
-
         if (_signer is null)
         {
             var unavailable = ErrorCatalog.SignFailed("The Authenticode signing service is not available.");
-            return HandleSignFailure(unavailable, request.SigningFailureIsFatal, warnings);
+            if (request.SigningFailureIsFatal)
+            {
+                return (unavailable, false, null);
+            }
+
+            warnings.Add(unavailable.ToString());
+            return (null, false, null);
         }
 
         if (request.SignRequest is null)
         {
             var noCertificate = ErrorCatalog.SignFailed("No certificate was configured for signing.");
-            return HandleSignFailure(noCertificate, request.SigningFailureIsFatal, warnings);
+            if (request.SigningFailureIsFatal)
+            {
+                return (noCertificate, false, null);
+            }
+
+            warnings.Add(noCertificate.ToString());
+            return (null, false, null);
         }
 
         var signRequest = request.SignRequest with { TargetPath = outputFull };
         var result = await _signer.SignAsync(signRequest, cancellationToken).ConfigureAwait(false);
         if (result.Success)
         {
-            _lastSignSucceeded = true;
-            _lastSignatureStatus = result.SignatureStatus;
             if (result.Warning is not null)
             {
                 warnings.Add(result.Warning);
@@ -753,17 +760,17 @@ public sealed class BatToExeEngine
 
             _logger.Write(LogLevel.Info, nameof(BatToExeEngine),
                 $"Signed '{outputFull}' (status: {result.SignatureStatus}).");
-            return null;
+            return (null, true, result.SignatureStatus);
         }
 
         var error = result.Error ?? ErrorCatalog.SignFailed("Unknown signing failure.");
         if (!request.SigningFailureIsFatal)
         {
             warnings.Add(error.ToString());
-            return null;
+            return (null, false, null);
         }
 
-        return error;
+        return (error, false, null);
     }
 
     private static RequestedExecutionLevel MapLevel(BatExecutionLevel level) => level switch

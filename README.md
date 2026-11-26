@@ -78,6 +78,40 @@ Packaging (run after publish):
 .\build\Package-Release.ps1          # portable zip + installer
 ```
 
+## Environment variables & limits
+
+Optional environment variables (all optional; the app works with defaults):
+
+| Variable | Purpose |
+|----------|---------|
+| `PROPS_SIGN_PFX_PASSWORD` | PFX file password for Authenticode signing. Read only from the environment — never stored, never logged. |
+| `PROPS_CSC_PATH` | Explicit path to `csc.exe` (.NET Framework C# compiler) used for batch-to-exe builds. Takes precedence over the in-box Framework compiler. |
+| `PROPS_PS2EXE_VERSION` | Overrides the pinned ps2exe version installed from the PowerShell Gallery (default: 1.18). |
+| `PROPS_AUTH_BYPASS` / `PROPS_SELFTEST*` | Developer-only escape hatches (auth bypass, self-test capture). Ignored in release builds. |
+
+Input limits:
+
+- **Conversion input** — scripts are capped at **10 MB** (`ScriptValidator.MaxInputBytes`);
+  larger files fail fast with a clear error instead of being read into memory.
+- **Secret scanning** — only the first **4 MB** of a script is scanned for secrets.
+- **Extra files** bundled into a batch executable are capped at **4 MB** each.
+
+## Command-line interface
+
+The app ships a headless CLI (`props1-cli`) built on the same Core engine, sharing the
+app's settings and logs — ideal for automation, scripting and CI:
+
+```powershell
+props1-cli convert .\scripts\deploy.ps1 --admin --upx --encrypt -v
+props1-cli bat .\setup.bat --protect --title "Setup" --version 1.2.3.4
+props1-cli scan .\scripts\deploy.ps1 --allow-low
+props1-cli doctor
+```
+
+Run `props1-cli help` for the full option list. Exit codes: `0` success, `1` failure,
+`2` usage error. The PFX password is read only from the `PROPS_SIGN_PFX_PASSWORD`
+environment variable, never from the command line.
+
 ## Project layout
 
 ```
@@ -86,6 +120,7 @@ src/
   ProPS1Studio.Core/      # conversion engine, secret scanner, UPX, signing,
                           # environment probe, diagnostics, logging (net8.0-windows)
   ProPS1Studio.App/       # WPF app: MVVM, views, themes, self-test capture
+  ProPS1Studio.Cli/       # headless props1-cli: convert, bat, scan, doctor
 tests/
   ProPS1Studio.Core.Tests/          # 98 unit tests
   ProPS1Studio.Integration.Tests/   # 18 end-to-end tests (real ps2exe/UPX/signing)

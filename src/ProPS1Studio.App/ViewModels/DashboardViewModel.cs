@@ -119,7 +119,7 @@ public sealed class DashboardViewModel : ObservableObject, INavigable
 
             ElevationSummary = report.IsElevated
                 ? "Running elevated (Administrator)"
-                : "Standard user · asInvoker";
+                : "Running as standard user (no elevation required)";
 
             ProbeStatus = report.Notes.Count > 0
                 ? string.Join("  ", report.Notes)

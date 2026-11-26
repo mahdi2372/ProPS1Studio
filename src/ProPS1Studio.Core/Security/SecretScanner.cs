@@ -93,10 +93,11 @@ public sealed class SecretScanner : ISecretScanner
 
         var findings = new List<SecretFinding>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        var lineStarts = ComputeLineStarts(content);
 
         foreach (var rule in BuiltInRules)
         {
-            Collect(content, rule, findings, seen);
+            Collect(content, rule, findings, seen, lineStarts);
         }
 
         if (extraPatterns is { Count: > 0 })
@@ -113,7 +114,7 @@ public sealed class SecretScanner : ISecretScanner
                     var regex = new Regex(pattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
                     Collect(content,
                         new Rule("custom", "Custom pattern", regex, SecretSeverity.Medium, ApplyHeuristicFilter: true),
-                        findings, seen);
+                        findings, seen, lineStarts);
                 }
                 catch (ArgumentException)
                 {
@@ -126,7 +127,9 @@ public sealed class SecretScanner : ISecretScanner
         return new SecretScanResult { Findings = findings };
     }
 
-    private static void Collect(string content, Rule rule, List<SecretFinding> findings, HashSet<string> seen)
+    private static void Collect(
+        string content, Rule rule, List<SecretFinding> findings, HashSet<string> seen,
+        List<int> lineStarts)
     {
         foreach (Match match in rule.Pattern.Matches(content))
         {
@@ -139,7 +142,7 @@ public sealed class SecretScanner : ISecretScanner
                 continue;
             }
 
-            var (line, column) = LineColumnOf(content, match.Index);
+            var (line, column) = LineColumnOf(lineStarts, match.Index);
             var key = $"{rule.Id}:{line}:{value}";
             if (!seen.Add(key))
             {
@@ -183,8 +186,10 @@ public sealed class SecretScanner : ISecretScanner
             return true;
         }
 
-        // Anything that looks like code (spaces around operators, parentheses) is not a literal secret.
-        if (trimmed.Contains('(') || trimmed.Contains(' ') || trimmed.Contains('+'))
+        // Anything that looks like code (spaces around operators, parentheses) is not a literal
+        // secret. '+' is deliberately NOT treated as code: base64 credentials (Azure storage
+        // keys, API keys) legitimately contain '+', and suppressing them would hide real secrets.
+        if (trimmed.Contains('(') || trimmed.Contains(' '))
         {
             return true;
         }
@@ -203,19 +208,41 @@ public sealed class SecretScanner : ISecretScanner
         return $"{trimmed[..4]}…{trimmed[^4..]}";
     }
 
-    private static (int Line, int Column) LineColumnOf(string content, int index)
+    /// <summary>One pass over the content collecting every line-start offset; keeps the
+    /// per-match line/column lookup at O(log n) instead of re-scanning from the start.</summary>
+    private static List<int> ComputeLineStarts(string content)
     {
-        var line = 1;
-        var lastLineStart = 0;
-        for (var i = 0; i < index && i < content.Length; i++)
+        var starts = new List<int> { 0 };
+        for (var i = 0; i < content.Length; i++)
         {
             if (content[i] == '\n')
             {
-                line++;
-                lastLineStart = i + 1;
+                starts.Add(i + 1);
             }
         }
 
-        return (line, index - lastLineStart + 1);
+        return starts;
+    }
+
+    /// <summary>Locates the line and column of <paramref name="index"/> via binary search over
+    /// precomputed line-start offsets.</summary>
+    private static (int Line, int Column) LineColumnOf(List<int> lineStarts, int index)
+    {
+        var lo = 0;
+        var hi = lineStarts.Count - 1;
+        while (lo < hi)
+        {
+            var mid = (lo + hi + 1) / 2;
+            if (lineStarts[mid] <= index)
+            {
+                lo = mid;
+            }
+            else
+            {
+                hi = mid - 1;
+            }
+        }
+
+        return (lo + 1, index - lineStarts[lo] + 1);
     }
 }

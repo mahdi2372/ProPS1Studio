@@ -23,7 +23,7 @@ public sealed class SettingsViewModel : ObservableObject
     private bool _protectOutput = true;
     private string _extraSecretPatternsText = string.Empty;
     private int _conversionTimeoutSeconds = 180;
-    private string _timestampServer = "http://timestamp.digicert.com";
+    private string _timestampServer = "https://timestamp.digicert.com";
     private string _signCertificateThumbprint = string.Empty;
     private string _signCertificateStoreLocation = "CurrentUser";
     private string _signPfxPath = string.Empty;
@@ -140,7 +140,7 @@ public sealed class SettingsViewModel : ObservableObject
                 .ToList();
             settings.ConversionTimeoutSeconds = ConversionTimeoutSeconds;
             settings.TimestampServer = string.IsNullOrWhiteSpace(TimestampServer)
-                ? "http://timestamp.digicert.com" : TimestampServer;
+                ? "https://timestamp.digicert.com" : TimestampServer;
             settings.SignCertificateThumbprint = NullIfBlank(SignCertificateThumbprint);
             settings.SignCertificateStoreLocation = NullIfBlank(SignCertificateStoreLocation) ?? "CurrentUser";
             settings.SignPfxPath = NullIfBlank(SignPfxPath);

@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using ProPS1Studio.Core.BatToExe;
 using ProPS1Studio.Core.Errors;
 using ProPS1Studio.Core.Logging;
@@ -130,10 +130,7 @@ public sealed class ConversionEngine
                             return new ConversionResult
                             {
                                 Success = false,
-                                Error = new AppError(
-                                    ErrorCode.SignFailed,
-                                    summary,
-                                    "Remove or replace the hardcoded values with environment variables or a secret store, then convert again."),
+                                Error = ErrorCatalog.SecretDetected(summary),
                                 SecretFindings = findings,
                                 Warnings = warnings,
                                 CompilerOutput = compilerOutput,
@@ -166,6 +163,7 @@ public sealed class ConversionEngine
             if (request.IconPath is not null && !capability.Supports("iconFile"))
             {
                 warnings.Add("The installed ps2exe version does not support a custom icon; the default icon is used.");
+                request.IconPath = null; // Drop it so the script builder does not request an unsupported flag.
             }
 
             // 6. Compile with ps2exe via a generated wrapper script.

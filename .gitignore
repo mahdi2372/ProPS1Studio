@@ -13,3 +13,7 @@ TestResults/
 
 # Logs / local state
 *.log
+
+# Local KeyAuth credentials: copy keyauth.example.json to keyauth.json and fill in
+# your own KeyAuth app values. Never commit real credentials.
+src/ProPS1Studio.App/keyauth.json

@@ -267,9 +267,11 @@ public sealed class LoginViewModel : ObservableObject
         ErrorText = string.Empty;
 
         // Local development credentials (username "1", password "1"): skip KeyAuth entirely.
-        // Applies to the Login and Register screens (a first run may open in Register mode);
-        // the License screen still requires a real key. In Register mode an explicit
+        // ONLY compiled into debug builds - the released app must never contain a credential
+        // bypass. Applies to the Login and Register screens (a first run may open in Register
+        // mode); the License screen still requires a real key. In Register mode an explicit
         // mismatching confirmation still falls through to validation.
+#if DEBUG
         if (_mode != AuthMode.License
             && Username.Trim() == "1"
             && Password == "1"
@@ -278,6 +280,7 @@ public sealed class LoginViewModel : ObservableObject
             CompleteAuthentication("1");
             return;
         }
+#endif
 
         if (!Validate())
         {

@@ -75,14 +75,42 @@ public sealed class ProcessRunner : IProcessRunner
         process.OutputDataReceived += (_, e) =>
         {
             if (e.Data is null) return;
-            lock (stdout) stdout.AppendLine(e.Data);
-            onOutputLine?.Invoke(e.Data);
+            string line;
+            lock (stdout)
+            {
+                stdout.AppendLine(e.Data);
+                line = e.Data;
+            }
+
+            // Invoke outside the lock: a throwing callback must never unwind into the
+            // event handler, and consumers should not be able to deadlock on this lock.
+            try
+            {
+                onOutputLine?.Invoke(line);
+            }
+            catch
+            {
+                // A bad consumer must not crash the process on a background thread.
+            }
         };
         process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data is null) return;
-            lock (stderr) stderr.AppendLine(e.Data);
-            onErrorLine?.Invoke(e.Data);
+            string line;
+            lock (stderr)
+            {
+                stderr.AppendLine(e.Data);
+                line = e.Data;
+            }
+
+            try
+            {
+                onErrorLine?.Invoke(line);
+            }
+            catch
+            {
+                // A bad consumer must not crash the process on a background thread.
+            }
         };
         process.EnableRaisingEvents = true;
         process.Exited += (_, _) => tcs.TrySetResult(process.ExitCode);

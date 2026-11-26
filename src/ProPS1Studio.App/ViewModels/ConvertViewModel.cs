@@ -154,7 +154,7 @@ public sealed class ConvertViewModel : ObservableObject
         var dialog = new OpenFileDialog
         {
             Title = "Select a PowerShell script",
-            Filter = "PowerShell scripts (*.ps1;*.psm1)|*.ps1;*.psm1|All files (*.*)|*.*",
+            Filter = "PowerShell scripts (*.ps1)|*.ps1|All files (*.*)|*.*",
             CheckFileExists = true,
             InitialDirectory = InitialDirectoryFor(_settings.LastInputDirectory),
         };

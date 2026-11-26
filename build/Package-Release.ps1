@@ -9,6 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot          # repo root
 $app = Join-Path $root "src\ProPS1Studio.App\ProPS1Studio.App.csproj"
+$cli = Join-Path $root "src\ProPS1Studio.Cli\ProPS1Studio.Cli.csproj"
+$cliDir = Join-Path $root "publish\cli"
 $publishDir = Join-Path $root "publish\app"
 
 if (-not $SkipPublish) {
@@ -17,9 +19,17 @@ if (-not $SkipPublish) {
     Write-Host "== Publishing (Release, win-x64, self-contained) =="
     & $dotnet publish $app -c Release -r win-x64 --self-contained true -o $publishDir -m:1 --nologo "-p:Version=$Version" "-p:AssemblyVersion=$Version.0" "-p:FileVersion=$Version.0"
     if ($LASTEXITCODE -ne 0) { throw "publish failed ($LASTEXITCODE)" }
+    Write-Host "== Publishing props1-cli (Release, win-x64, self-contained) =="
+    & $dotnet publish $cli -c Release -r win-x64 --self-contained true -o $cliDir -m:1 --nologo "-p:Version=$Version" "-p:AssemblyVersion=$Version.0" "-p:FileVersion=$Version.0"
+    if ($LASTEXITCODE -ne 0) { throw "CLI publish failed ($LASTEXITCODE)" }
 }
 
 if (-not (Test-Path (Join-Path $publishDir "ProPS1Studio.exe"))) { throw "ProPS1Studio.exe missing in $publishDir" }
+
+# Ship the CLI next to the app so both the portable zip and the installer include it.
+if (Test-Path (Join-Path $cliDir "props1-cli.exe")) {
+    Copy-Item (Join-Path $cliDir "props1-cli.exe") $publishDir -Force
+}
 
 Write-Host "== Creating portable zip =="
 $zip = Join-Path $root "publish\ProPS1Studio-portable-$Version-x64.zip"

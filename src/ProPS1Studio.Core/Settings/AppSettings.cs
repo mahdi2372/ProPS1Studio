@@ -31,7 +31,7 @@ public sealed class AppSettings
     public bool ProtectOutput { get; set; } = true;
     public List<string> ExtraSecretPatterns { get; set; } = new();
     public int ConversionTimeoutSeconds { get; set; } = 180;
-    public string TimestampServer { get; set; } = "http://timestamp.digicert.com";
+    public string TimestampServer { get; set; } = "https://timestamp.digicert.com";
     public string? SignCertificateThumbprint { get; set; }
     public string? SignCertificateStoreLocation { get; set; } = "CurrentUser";
     public string? SignPfxPath { get; set; }
@@ -79,27 +79,38 @@ public sealed class SettingsStore
     {
         lock (_sync)
         {
+            AppSettings? settings = null;
+            Exception? readError = null;
             try
             {
-                if (!File.Exists(_filePath))
+                if (File.Exists(_filePath))
                 {
-                    return new AppSettings();
+                    var json = File.ReadAllText(_filePath);
+                    settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
+                    if (settings is null)
+                    {
+                        throw new JsonException("Settings deserialized to null.");
+                    }
                 }
-
-                var json = File.ReadAllText(_filePath);
-                var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
-                if (settings is null)
-                {
-                    throw new JsonException("Settings deserialized to null.");
-                }
-
-                Normalize(settings);
-                return settings;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException
+                or NotSupportedException or ArgumentException)
             {
+                readError = ex;
+            }
+
+            if (readError is null)
+            {
+                var loaded = settings ?? new AppSettings();
+                Normalize(loaded);
+                return loaded;
+            }
+
+            if (readError is JsonException)
+            {
+                // Genuinely corrupt: keep a backup, then reset on disk.
                 _logger.Write(LogLevel.Warn, nameof(SettingsStore),
-                    $"Settings file was unreadable and has been reset: {ex.Message}");
+                    $"Settings file was corrupt and has been reset: {readError.Message}");
                 TryBackUpCorruptFile();
                 var defaults = new AppSettings();
                 try
@@ -113,6 +124,12 @@ public sealed class SettingsStore
 
                 return defaults;
             }
+
+            // Transient IO problem (file locked, access denied): fall back to in-memory
+            // defaults WITHOUT overwriting the file - the user's settings survive the next start.
+            _logger.Write(LogLevel.Warn, nameof(SettingsStore),
+                $"Settings file could not be read this time ({readError.Message}); using defaults until it becomes available again.");
+            return new AppSettings();
         }
     }
 
